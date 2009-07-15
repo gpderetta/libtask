@@ -1,6 +1,8 @@
-#include "gl.h"
+#include "gl.hpp"
 #include <SDL/SDL_opengl.h>
 #include <GL/gl.h>
+#include <GL/glu.h>
+
 namespace eb {
 namespace gl {
         
