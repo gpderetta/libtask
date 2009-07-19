@@ -1,9 +1,25 @@
-CC = gcc -Wall -ansi
+DEVEL_FLAGS= -W -Wall -O3\
+	-g \
 
-all:
-	$(CC) lesson19.c -o lesson19 -lGL -lGLU `sdl-config --cflags --libs`
+INCLUDE=
 
-clean:
-	@echo Cleaning up...
-	@rm lesson19
-	@echo Done.
+CPPFLAGS=  $(INCLUDE) 
+CXXFLAGS ?= $(DEVEL_FLAGS)
+LDFLAGS=  	`sdl-config --cflags --libs`
+
+BOOST_PO_LIB=boost_program_options
+
+PROGRAMS=swarm
+
+swarm_SOURCES=		\
+	swarm.cc\
+	particle.cc\
+	gl.cc\
+
+swarm_LIBS=	\
+	GL\
+	GLU\
+
+
+include Makefile.common
+

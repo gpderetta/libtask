@@ -1,0 +1,59 @@
+.PHONY: clean all
+all: $(PROGRAMS) $(LIBRARIES:%=%.so) $(STATIC_LIBRARIES:%=%.a)
+
+define PROGRAM_template
+$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+
+$(1): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
+
+.PHONY: $$($(2)_LIBS:%=-l%)
+
+ALL_OBJS += $$($(2)_OBJS)
+ALL_DEPS += $$($(2)_DEPS)
+endef
+
+define LIBRARY_template
+$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+
+$(1:%=%.so): CPPFLAGS += -fPIC
+$(1:%=%.so): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
+
+ALL_OBJS += $$($(2)_OBJS)
+ALL_DEPS += $$($(2)_DEPS)
+endef
+
+define STATIC_LIBRARY_template
+$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+
+$(1:%=%.a): CPPFLAGS += 
+$(1:%=%.a): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
+
+ALL_OBJS += $$($(2)_OBJS)
+ALL_DEPS += $$($(2)_DEPS)
+endef
+
+
+$(foreach prog,$(PROGRAMS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
+$(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
+$(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
+
+$(PROGRAMS):
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(LIBRARIES:%=%.so):
+	$(CXX) -shared $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(STATIC_LIBRARIES:%=%.a):
+	ar rcs  $@ $^
+
+%.d: %.cc
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF $@ $<; \
+	perl -pi -e 's{^(.*?)\.o[ :]+}{$$1.o $$1.d :}g' $@
+
+clean:
+	rm -f $(ALL_OBJS) $(ALL_DEPS) $(PROGRAMS)  $(STATIC_LIBRARIES:%=%.a) *.d
+
+include $(ALL_DEPS)
