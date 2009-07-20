@@ -7,6 +7,11 @@
 #include <iostream>
 #include <boost/foreach.hpp>
 #include <boost/next_prior.hpp>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/variate_generator.hpp>
+#include <boost/random/uniform_int.hpp>
+#include <boost/random/uniform_real.hpp>
+#include <boost/random/normal_distribution.hpp>
 
 namespace eb {namespace swarm{
 template<typename T>
@@ -15,7 +20,7 @@ T square(T x) { return x*x; }
 const int max_fps = 40; 
 const int min_fps =  16;
 
-const double desired_dt =  0.2;
+const double desired_dt =  0.1;
 
 struct boid;
 typedef std::list<boid> boid_list;
@@ -25,22 +30,57 @@ typedef boid_list::iterator boid_iterator;
 struct boid {
   boid(point position,
       vector velocity,
-      color c,
-      boid_ptr closest= 0)
+      color c)
    : pos(position)
    , vel(velocity)
    , col(c)
-   , closest(closest) {}
+   , closest(closest)
+   , counter(0){}
 
   point pos;
   vector vel;
   color col;
   boid_ptr closest;
+  int counter;
 };
 
-double frand(double max) {
-  // XXX quick hack
-  return (rand() * max)  / RAND_MAX;
+boost::mt19937 global_rng;
+boost::uniform_real<> uni;
+int my_random(int top, int low = 0) {
+  boost::uniform_int<> uni(low,top-1);
+  boost::variate_generator<
+  boost::mt19937&, boost::uniform_int<>
+    > die(global_rng, uni);
+  return die();                 
+}
+
+double my_frandom(double max, double min=0) {
+  boost::uniform_real<> uni(min, max);
+  return uni(global_rng); 
+}
+
+double my_nrandom(double avg, double dev = 1) {
+  boost::normal_distribution<> norm(avg, dev);
+  boost::uniform_real<> uni(0,1);
+  boost::variate_generator<boost::mt19937&, boost::uniform_real<> > vg(global_rng, uni);
+  double r = norm(vg);
+  std::cerr << r << "\n";
+  return r;
+}
+
+
+
+color normal_color() {
+  return color(my_frandom(0.5),
+               my_frandom(0.5),
+               my_frandom(1, 0.7),
+               my_frandom(0.6,0.4));
+}
+
+color target_color() {
+  return color(my_frandom(1, 0.7),
+               my_frandom(1., 0.7),
+               my_frandom(0.5));
 }
 
 enum schemes {
@@ -58,8 +98,8 @@ struct state_impl {
   state_impl(int width, int height);
   unsigned long update(world&);
 private:
-  void init_boids(int nboids = 20, int ntargets = 3);
-  boid create_random_boid(color c, boid_ptr target) const;
+  void init_boids(int nboids = 600, int ntargets = 10);
+  boid create_random_boid(color c) const;
   void pick_new_targets();
   void add_boids(int num);
   void add_targets(int num);
@@ -73,13 +113,11 @@ private:
   void random_big_change();
   void init_time();
   double get_time() const;
-  boid_iterator get_random_target() ;
-  boid_iterator get_random_boid() ;
+  boid_iterator pick_random_target() ;
+  boid_iterator pick_random_boid() ;
 
 
   unsigned long delay;
-  size_t width;
-  size_t height;
   float x_max; // 1.0
   float y_max; // height/width
 
@@ -108,12 +146,12 @@ private:
   ::timeval startup_time;
 };
 
-boid state_impl::create_random_boid(color c, boid_ptr target) const {
-  return boid(point(frand(x_max),
-                   frand(y_max)),
-             vector(frand(max_velocity/2),
-                    frand(max_velocity/2)),
-             c, target);
+boid state_impl::create_random_boid(color c) const {
+  return boid(point(my_frandom(x_max),
+                    my_frandom(y_max)),
+              vector(my_frandom(max_velocity/2),
+                     my_frandom(max_velocity/2)),
+             c);
 }
 
 void state_impl::init_boids(int nboids, int ntargets){
@@ -123,15 +161,15 @@ void state_impl::init_boids(int nboids, int ntargets){
   while(nboids--) {
     boids.push_back(
       create_random_boid(
-        color(0,0,1),0));
+        normal_color()));
     
   }
 
   while(ntargets--) {
-    targets.push_back(create_random_boid(color(1,0,0),0));
+    targets.push_back(create_random_boid(target_color()));
   }
   BOOST_FOREACH(boid&b, boids)
-    b.closest = &*get_random_target();
+    b.closest = &*pick_random_target();
   
 
 }
@@ -149,15 +187,15 @@ struct boid_parameters {
 
 void state_impl::pick_new_targets(){
   BOOST_FOREACH(boid& b, boids)
-    b.closest = &*get_random_target();
+    b.closest = &*pick_random_target();
 }
 
 void state_impl::add_boids(int num)
 {
   assert(num > 0);
   while(num--)  {
-    boid b = *get_random_boid();
-    b.closest = &*get_random_target();
+    boid b = *pick_random_boid();
+    b.closest = &*pick_random_target();
     boids.push_back(b);
   }
 }
@@ -167,8 +205,8 @@ void state_impl::add_targets(int num)
   assert(num > 0);
 
   while(num--) {
-    boid b = *get_random_target();
-    b.closest = &*get_random_target();
+    boid b = *pick_random_target();
+    //b.closest = &*pick_random_target();
     targets.push_back(b);
   }
 }
@@ -180,10 +218,10 @@ float state_impl::min_velocity() const
 
 void state_impl::draw_boids(world&w) {
   BOOST_FOREACH(boid& b, boids) {
-    gl::draw_dot(w, b.pos*vector(width, width), b.col);
+    gl::draw_dot(w, b.pos, b.col);
   }
   BOOST_FOREACH(boid& b, targets) {
-    gl::draw_dot(w, b.pos*vector(width, width), b.col);
+    gl::draw_dot(w, b.pos, b.col);
   }
 }
 
@@ -210,34 +248,25 @@ void state_impl::check_limits(boid& b) const {
 }
 
 void state_impl::update_state() {
-  // Change target to the first 5 boids and move them to the
-  // end of list
-  assert(!boids.empty());
-  boid_iterator i = boids.begin();
-  boid_iterator last = boost::prior(boids.end());
-  for (int j = 0; j < 5; ) {
-    /* update closests boid
-       for the boid indicated by check_index */
-    assert(!boids.empty());
-
-    boid& b = *i;
-
-    float min_distance = inner_prod(b.closest->pos - b.pos);
-    BOOST_FOREACH(boid& t, targets){
-      float distance = inner_prod(t.pos-b.pos);
-      if (distance < min_distance) {
-        b.closest = &t;
-        min_distance = distance;
+  BOOST_FOREACH(boid& b, boids) {
+    if(b.counter > 0) {
+      float min_distance = INFINITY;
+      BOOST_FOREACH(boid& t, targets){
+        if(&t == b.closest) continue;
+        float distance = inner_prod(t.pos - b.pos);
+        if (distance < min_distance ) {
+          std::cerr <<"new closest\n";
+          b.closest = &t;
+          min_distance = distance;
+        }
       }
     }
-    j--;
-    boids.splice(boids.end(), boids,i++);
-    if(i == last) break;
   }
-  
+
+
   /* update target state */
   BOOST_FOREACH(boid& b, targets) {
-    double theta = frand(2*M_PI);
+    double theta = my_frandom(2*M_PI);
     vector accelleration (
       target_accelleration*cos(theta),
       target_accelleration*sin(theta)
@@ -266,8 +295,8 @@ void state_impl::update_state() {
 
   /* update boid state */
   BOOST_FOREACH(boid&b, boids) {
-    point target = b.closest->pos + vector(frand(noise),
-                                          frand(noise));
+    point target = b.closest->pos
+      + vector(my_frandom(noise, -noise),my_frandom(noise, -noise));
     double theta = atan2(target - b.pos);
     vector accelleration (
       max_accelleration*cos(theta),
@@ -320,34 +349,37 @@ void state_impl::mutate_boids(int which) {
   if (which == 0) {
     /* turn boid into target */
     if(has_more_than_one(boids)){
-      boid_iterator b = get_random_boid();
+      boid_iterator b = pick_random_boid();
       targets.splice(targets.end(), boids, b);
+      b->col = target_color();
+      b->closest = 0;
     }
   } else {
     /* turn target into boid */
     if(has_more_than_one(targets)){
-      boid_iterator b = get_random_target();
+      boid_iterator b = pick_random_target();
       boids.splice(boids.end(), targets, b);
-      b->closest = &*get_random_target();
+      b->closest = &*pick_random_target();
 
       // do not let boids follow other boids 
       BOOST_FOREACH(boid& x, boids) {
         if (x.closest == &*b) {
-          x.closest = &*get_random_target();
+          x.closest = &*pick_random_target();
         }
       }
+      b->col = normal_color();
     }
   }
 }
 
 void mutate_parameter(float &param){
-  param *= 0.75+frand(0.5);
+  param *= 0.75+my_frandom(0.5);
 }
 
 void state_impl::random_small_change(){
   int which = 0;
 
-  which = random()%11;
+  which = my_random(11);
 
   if (++rsc_call_depth > 10) {
     rsc_call_depth--;
@@ -386,17 +418,23 @@ void state_impl::random_small_change(){
     break;
     
   case 6:
-  case 7:
+    break;
+  case 7: {
     /* target to boid */
-    mutate_boids(1);
+    int count = (int)std::abs(my_nrandom(0,targets.size()/10));
+    while(count--)
+      mutate_boids(1);
     break;
+  }
 
-  case 8:
+  case 8: {
     /* boid to target */
-    mutate_boids(0);
-    mutate_boids(0);
-    break;
+    int count = (int)std::abs(my_nrandom(0,boids.size()/10));
+    while(count--)
+      mutate_boids(0);
 
+    break;
+  }
   case 9:
     /* color scheme */
     break;
@@ -409,33 +447,33 @@ void state_impl::random_small_change(){
   }
 
   // Clamp values
-  if (min_velocity_multiplier < 0.03)
-    min_velocity_multiplier = 0.03;
-  else if (min_velocity_multiplier > 0.09)
-    min_velocity_multiplier = 0.09;
+  if (min_velocity_multiplier < 0.3)
+    min_velocity_multiplier = 0.3;
+  else if (min_velocity_multiplier > 0.9)
+    min_velocity_multiplier = 0.9;
   if (noise < 0.01)
     noise = 0.01;
-  if (max_velocity < 0.001)
-    max_velocity = 0.001;
-  if (target_velocity < 0.001)
-    target_velocity = 0.001;
+  if (max_velocity < 0.02)
+    max_velocity = 0.02;
+  if (target_velocity < 0.02)
+    target_velocity = 0.02;
   if (target_accelleration > target_velocity*0.7)
     target_accelleration = target_velocity*0.7;
   if (max_accelleration > max_velocity*0.7)
     max_accelleration = max_velocity*0.7;
   if (target_accelleration > target_velocity*0.7)
     target_accelleration = target_velocity*0.7;
-  if (max_accelleration < 0.001)
-    max_accelleration = 0.001;
-  if (target_accelleration < 0.0005)
-    target_accelleration = 0.0005;
+  if (max_accelleration < 0.01)
+    max_accelleration = 0.01;
+  if (target_accelleration < 0.005)
+    target_accelleration = 0.005;
 
   rsc_call_depth--;
 }
 
 void state_impl::random_big_change()
 {
-  int which = random()%4;
+  int which = my_random(4);
   
   if (++rbc_call_depth > 3) {
     rbc_call_depth--;
@@ -468,9 +506,9 @@ void state_impl::random_big_change()
     break;
     
   default:
-    boid_iterator b = get_random_target();
-    b->pos += vector(frand(x_max/4)-x_max/8,
-                     frand(y_max/4)-y_max/8);
+    boid_iterator b = pick_random_target();
+    b->pos += vector(my_frandom(x_max/4)-x_max/8,
+                     my_frandom(y_max/4)-y_max/8);
     /* updateState() will fix bounds */
     break;
   }
@@ -495,8 +533,6 @@ double state_impl::get_time() const
 
 state_impl::state_impl(int width, int height)
  : delay(0)
- , width(width)
- , height(height)
  , x_max(1.0)
  , y_max(float(height)/width)
  , dt(0.3)
@@ -505,8 +541,8 @@ state_impl::state_impl(int width, int height)
  , max_velocity(0.05)
  , max_accelleration(0.03)
  , min_velocity_multiplier(0.5)
- , noise (0.01)
- , change_probability(0.08)
+ , noise (.05)
+ , change_probability(0.04)
  , rsc_call_depth(0)
  , rbc_call_depth(0)
    
@@ -524,23 +560,23 @@ state_impl::state_impl(int width, int height)
   init_time();
 
   if (change_probability > 0) {
-    for (int i = random()%5+5; i >= 0; i--) {
+    for (int i = my_random(10, 5); i >= 0; i--) {
       random_small_change();
     }
   }
 }
 
 boid_iterator
-state_impl::get_random_target()  {
+state_impl::pick_random_target()  {
   assert(!targets.empty());
-  size_t i = random()% targets.size();
+  size_t i = my_random(targets.size());
   return boost::next(targets.begin(), i);
 };
 
 boid_iterator
-state_impl::get_random_boid() {
+state_impl::pick_random_boid() {
   assert(!boids.empty());
-  size_t i = random()% boids.size();
+  size_t i = my_random(boids.size());
   return boost::next(boids.begin(), i);
 };
 
@@ -566,16 +602,17 @@ state_impl::update(world& w) {
   draw_end = get_time();
   draw_nframes++;
 
-  if (draw_end > draw_start+0.5) {
-    if (frand(1.0) < change_probability) random_small_change();
-    if (frand(1.0) < change_probability*0.3) random_big_change();
+  if (true || draw_end > draw_start+0.5) {
+    
+    if (my_frandom(1.0) < change_probability) random_small_change();
+    //if (my_frandom(1.0) < change_probability*0.3) random_big_change();
     draw_elapsed = draw_end-draw_start;
 	
     draw_time_per_frame = draw_elapsed/draw_nframes - delay*1e-6;
     draw_fps = draw_nframes/draw_elapsed;
 
-    std::cout <<"elapsed:"<<draw_elapsed<<"\n";
-    std::cout <<"fps: "<<draw_fps <<"secs per frame: "<<draw_time_per_frame <<" delay: "<<delay<<std::endl; 
+//     std::cout <<"elapsed:"<<draw_elapsed<<"\n";
+//     std::cout <<"fps: "<<draw_fps <<"secs per frame: "<<draw_time_per_frame <<" delay: "<<delay<<std::endl; 
 
     if (draw_fps > max_fps) {
       delay = (1.0/max_fps - (draw_time_per_frame + delay*1e-6))*1e6;

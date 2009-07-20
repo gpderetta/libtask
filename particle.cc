@@ -19,8 +19,8 @@
 #include <vector>
 namespace eb { 
 /* screen width, height, and bit depth */
-const size_t screen_width  = 1024;
-const size_t screen_height = 800;
+const size_t screen_width  = 1000;
+const size_t screen_height = 1000;
 const size_t screen_bpp    = 16;
 
 /* Max number of particles */
