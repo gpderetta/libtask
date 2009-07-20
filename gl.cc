@@ -28,7 +28,10 @@ graphic_context::~graphic_context() {
 
 /* function to reset our viewport after a window resize */
 void
-graphic_context::resize_window( int width, int height ){
+graphic_context::resize_window( int width_, int height_ ){
+  width=width_;
+  height=height_;
+  
   /* Protect against a divide by zero */
   if ( height == 0 )
     height = 1;
@@ -47,7 +50,10 @@ graphic_context::resize_window( int width, int height ){
   /* Set our perspective */
   //gluPerspective( 45.0f, ratio, 0.1f, 200.0f );
   glOrtho(0, width, height, 0, -1, 1);
-        
+
+  glClearAccum(0.0, 0.0, 0.0, 1.0);
+  
+  glClear(GL_ACCUM_BUFFER_BIT);
   /* Make sure we're chaning the model view and not the projection */
   glMatrixMode( GL_MODELVIEW );
         
@@ -82,7 +88,7 @@ texture graphic_context::load_textures(const std::string& filename) {
   return result;
 }
 
-graphic_context::graphic_context() {
+graphic_context::graphic_context(): width(), height() {
   tex.id = -1;
   tex = load_textures();
   // enable smooth shading 
@@ -118,6 +124,13 @@ graphic_context::reset() {
 
 void
 graphic_context::swap_buffers() {
+  float q = .95;
+  
+  glAccum(GL_MULT, q);
+  
+  glAccum(GL_ACCUM, 0.4);
+  
+  glAccum(GL_RETURN, 1.0);
   /* Draw it to the screen */
   SDL_GL_SwapBuffers( );
 }
@@ -127,16 +140,15 @@ graphic_context::swap_buffers() {
 void draw_dot(const graphic_context&ctx,
               const point p, 
               const color c,
-              const float alpha,
                float radius) {
 
-  const float x = p.x;
-  const float y = p.y;
+  const float x = p.x*ctx.width;
+  const float y = p.y*ctx.width;
   const float z = 0;
   glColor4f( c.r,
              c.g,
              c.b,
-             alpha );
+             c.a);
 
   /* Build Quad From A Triangle Strip */
   glBegin( GL_TRIANGLE_STRIP );
