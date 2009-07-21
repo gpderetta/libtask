@@ -1,5 +1,4 @@
-DEVEL_FLAGS= -W -Wall -O3\
-	-g \
+DEVEL_FLAGS= -W -Wall -O3 -mfpmath=sse -march=pentium-m -ffast-math	-g \
 
 INCLUDE=
 

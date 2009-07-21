@@ -124,7 +124,7 @@ graphic_context::reset() {
 
 void
 graphic_context::swap_buffers() {
-  float q = .95;
+  float q = .9;
   
   glAccum(GL_MULT, q);
   
