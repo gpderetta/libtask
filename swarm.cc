@@ -27,19 +27,21 @@ struct boid {
   boid(point position,
       vector velocity,
       color c)
-   : pos(position)
-   , vel(velocity)
-   , col(c)
-   , strenght(1)
-   , force()
-   , counter(0){}
+   : m_life(0)
+   , m_color(c)
+   , m_position(position)
+   , m_force()
+   , m_velocity(velocity)
+    {}
 
-  point pos;
-  vector vel;
-  color col;
-  float strenght; // targets only
-  vector force;   // boids only
-  int counter;
+
+  float m_life;
+  color m_color;
+  point m_position;
+  vector m_force;
+  vector m_velocity;
+
+
 };
 
 boost::mt19937 global_rng;
@@ -83,7 +85,7 @@ struct state_impl {
   state_impl(int width, int height);
   unsigned long update(world&);
 private:
-  void init_boids(int nboids =300, int ntargets = 1);
+  void init_boids(int nboids =500, int ntargets = 20);
   boid create_random_boid(color c) const;
   float min_velocity() const;
   void draw_boids(world&);
@@ -164,40 +166,50 @@ float state_impl::min_velocity() const
 
 void state_impl::draw_boids(world&w) {
   BOOST_FOREACH(boid& b, boids) {
-    gl::draw_dot(w, b.pos, b.col);
+    gl::draw_dot(w, b.m_position, b.m_color);
   }
   BOOST_FOREACH(boid& b, targets) {
-    gl::draw_dot(w, b.pos, b.col);
+    gl::draw_dot(w, b.m_position, b.m_color);
   }
 }
 
 void state_impl::check_limits(boid& b) const { 
   /* check limits on targets */
-  if (b.pos.x < 0) {
+  if (b.m_position.x < 0) {
     /* bounce */
-    b.pos.x = -b.pos.x;
-    b.vel.x = -b.vel.x;
-  } else if (b.pos.x >= x_max) {
+    b.m_position.x = -b.m_position.x;
+    b.m_velocity.x = -b.m_velocity.x;
+  } else if (b.m_position.x >= x_max) {
     /* bounce */
-    b.pos.x = 2*x_max-b.pos.x;
-    b.vel.x = -b.vel.x;
+    b.m_position.x = 2*x_max-b.m_position.x;
+    b.m_velocity.x = -b.m_velocity.x;
   }
-  if (b.pos.y < 0) {
+  if (b.m_position.y < 0) {
     /* bounce */
-    b.pos.y = -b.pos.y;
-    b.vel.y = -b.vel.y;
-  } else if (b.pos.y >= y_max) {
+    b.m_position.y = -b.m_position.y;
+    b.m_velocity.y = -b.m_velocity.y;
+  } else if (b.m_position.y >= y_max) {
     /* bounce */
-    b.pos.y = 2*y_max-b.pos.y;
-    b.vel.y = -b.vel.y;
+    b.m_position.y = 2*y_max-b.m_position.y;
+    b.m_velocity.y = -b.m_velocity.y;
   }
 }
 
 
 #include <xmmintrin.h>
 
-const float G = 0.001;
-const float Gx = -0.0001;
+const float G = 0.000050;
+const float Gx = -0.000001;
+
+    vector limit_magnitude(vector v, float max) {
+      float m = norm_2(v);
+      if(m > max) {
+	float ratio = max/m;
+	v *=ratio;
+      }
+      return v;
+    }
+
 void state_impl::update_state() {
 
   
@@ -208,82 +220,72 @@ void state_impl::update_state() {
 
   
   BOOST_FOREACH(boid& b, boids) {
-    b.force = vector();
     BOOST_FOREACH(boid& t, targets){
-      vector dist = t.pos - b.pos;
+      vector dist = t.m_position - b.m_position;
       const float norm_sq = inner_prod(dist) ;
       float inorm = inv_sqrt(norm_sq)  ;
       vector dir = dist * inorm;
-      //if(inorm > 1000) continue;
-      if(inorm > 50) {
-        inorm = 50;
-        dir = rotate(dir,M_PI*0.5);
-      }
-//       const double angle = M_PI*0.50;
-//       dir =  vector(dir.x*cos(angle)-dir.y*sin(angle),
-//                    dir.x*sin(angle)+dir.y*cos(angle));
-
-      b.force +=  dir * t.strenght * std::pow(inorm,2) *G  ;
-      //b.force +=  dir * t.strenght * std::pow(inorm,3) *Gx ;
-
-
+      b.m_force +=  dir * std::pow(inorm,2) *G  ;
+      b.m_force +=  dir * std::pow(inorm,3) *Gx ;
     }
   }
 
 
   /* update target state */
   BOOST_FOREACH(boid& b, targets) {
-    double theta = my_frandom(2*M_PI);
-    vector accelleration (
-      target_accelleration*cos(theta),
-      target_accelleration*sin(theta)
-    );
+    float theta = my_nrandom(0,2*M_PI);
+    float accell = std::abs(my_nrandom(0, target_accelleration));
+    vector accelleration = limit_magnitude(b.m_force,3) + 
+      vector(cos(theta)*accell, 
+	     sin(theta)*accell);
+    float v = norm_2(b.m_velocity);
+    b.m_velocity += accelleration*dt;
+    vector old_vel = b.m_velocity;
+    double ratio = 1;
 
-    b.vel += accelleration*dt;
-
-    /* check velocity */
-    double iv = inv_sqrt(inner_prod(b.vel));
-    if (iv < 1/target_velocity) {
-      double ratio = target_velocity * iv;
-      /* save old vel for acc computation */
-      vector old_vel = b.vel;
-
-      /* compute new velocity */
-      b.vel *= ratio;
-      
-      /* update acceleration */
-      accelleration = (b.vel-old_vel)/dt;
-    }
-
-    /* update position */
-    b.pos += b.vel*dt + accelleration*0.5*square(dt);
-    
+    if (v > target_velocity)  {
+      ratio = target_velocity/v;
+    } 
+    b.m_velocity *= ratio;
+    accelleration = (b.m_velocity-old_vel)/dt;         
+    vector acc = accelleration*0.5*square(dt);
+    b.m_position += b.m_velocity*dt + acc;
     check_limits(b);
+    b.m_force = vector();
   }
 
   /* update boid state */
   BOOST_FOREACH(boid&b, boids) {
-    //vector vnoise = (my_random(M_PI*2))*my_nrandom(0, noise*norm_2(b.force));
-    vector accelleration = b.force;//  + vector(my_nrandom(0,abs(noise*b.force.x)),my_nrandom(0,abs(noise*b.force.y)));
+    //vector vnoise = (my_random(M_PI*2))*my_nrandom(0, noise*norm_2(b.m_force));
+    //  + vector(my_nrandom(0,abs(noise*b.m_force.x)),
+    // my_nrandom(0,abs(noise*b.m_force.y)));
+    //     double theta = atan2(b.m_force);    
+    //     vector accelleration =
+    //     inner_prod(b.m_force) > 1000000000?
+    //       vector  (
+    // 	       .1*target_accelleration*cos(theta),
+    // 	       .1*target_accelleration*sin(theta)
+    // 	       ) : b.m_force;
 
 
-    b.vel += accelleration*dt;
-    vector old_vel = b.vel;
-
+    vector accelleration = limit_magnitude(b.m_force,3);
+    float v = norm_2(b.m_velocity);
+    b.m_velocity += accelleration*dt;
+    vector old_vel = b.m_velocity;
     double ratio = 1;
-    float v = norm_2(b.vel);
+
     if (v > max_velocity)  {
       ratio = max_velocity/v;
-      //b.vel = rotate(b.vel, (my_random(1, 0)==0?1:1)*M_PI*0.1);
     } else if (v < min_velocity())  {
       ratio = min_velocity()/v;
     }
-    b.vel *= ratio;
-    accelleration = (b.vel-old_vel)/dt;         
+
+    b.m_velocity *= ratio;
+    accelleration = (b.m_velocity-old_vel)/dt;         
     vector acc = accelleration*0.5*square(dt);
-    b.pos += b.vel*dt + acc;
-    //std::cout << b.force << " "<< (b.vel*dt) << " "<<acc<<" "<<ratio<<"\n";
+    b.m_position += b.m_velocity*dt + acc;
     check_limits(b);
+    b.m_force = vector();
   }
   _mm_setcsr( oldMXCSR ); 
 }
@@ -385,9 +387,9 @@ state_impl::state_impl(int width, int height)
  , x_max(1.0)
  , y_max(float(height)/width)
  , dt(0.3)
- , target_velocity(0.0)
+ , target_velocity(0.01)
  , target_accelleration(0.02)
- , max_velocity(0.1)
+ , max_velocity(0.036)
  , min_velocity_multiplier(0.5)
  , noise(2)
  , change_probability(0.00)
