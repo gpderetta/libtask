@@ -12,13 +12,17 @@ namespace gl {
   /* function to release/destroy our resources and restoring the old
    * desktop */
 
+#if 0
 #define GLERR()                                     \
   do {                                              \
     GLenum err = glGetError();                      \
     if(err == GL_NO_ERROR) break;                   \
-    std::cerr << (char*)gluErrorString(err)<<" at "<< __FILE__<<":"<<__LINE__<<std::endl; \
+   std::cerr << (char*)gluErrorString(err)<<" at "<< __FILE__<<":"<<__LINE__<<std::endl; \
   } while(true);                                    \
 
+#else
+#define GLERR()
+#endif
 
 graphic_context::~graphic_context() {
   /* Clean up our textures */
