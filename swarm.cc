@@ -26,10 +26,12 @@ const double desired_dt =  0.1;
 struct boid {
   boid(point position,
       vector velocity,
-      color c)
+       color c, float mass)
    : m_life(0)
    , m_color(c)
+   , m_mass(mass)
    , m_position(position)
+   , m_old_accelleration()
    , m_force()
    , m_velocity(velocity)
     {}
@@ -37,7 +39,9 @@ struct boid {
 
   float m_life;
   color m_color;
+  float m_mass;
   point m_position;
+  vector m_old_accelleration;
   vector m_force;
   vector m_velocity;
 
@@ -85,8 +89,8 @@ struct state_impl {
   state_impl(int width, int height);
   unsigned long update(world&);
 private:
-  void init_boids(int nboids =500, int ntargets = 20);
-  boid create_random_boid(color c) const;
+  void init_boids(int nboids = 2, int ntargets = 1);
+  boid create_random_boid(color c, float mass) const;
   float min_velocity() const;
   void draw_boids(world&);
   void check_limits(boid&b) const;
@@ -124,12 +128,12 @@ private:
   ::timeval startup_time;
 };
 
-boid state_impl::create_random_boid(color c) const {
+boid state_impl::create_random_boid(color c, float mass) const {
   return boid(point(my_frandom(x_max),
                     my_frandom(y_max)),
               vector(my_frandom(max_velocity/2),
                      my_frandom(max_velocity/2)),
-             c);
+	      c, mass);
 }
 
 void state_impl::init_boids(int nboids, int ntargets){
@@ -139,12 +143,12 @@ void state_impl::init_boids(int nboids, int ntargets){
   while(nboids--) {
     boids.push_back(
       create_random_boid(
-        normal_color()));
+	 normal_color(), -1));
     
   }
 
   while(ntargets--) {
-    targets.push_back(create_random_boid(target_color()));
+    targets.push_back(create_random_boid(target_color(), 1));
   }
 }
 
@@ -198,8 +202,8 @@ void state_impl::check_limits(boid& b) const {
 
 #include <xmmintrin.h>
 
-const float G = 0.000050;
-const float Gx = -0.000001;
+const float G = 0.0004;
+const float Gx = -0.00000;
 
     vector limit_magnitude(vector v, float max) {
       float m = norm_2(v);
@@ -217,17 +221,45 @@ void state_impl::update_state() {
   int newMXCSR = oldMXCSR | 0x8040; // set DAZ and FZ bits
   _mm_setcsr( newMXCSR ); //write the new MXCSR setting to the MXCSR
   
+  max_velocity = 0.1;
 
+  /* update boid state -- A */
+  BOOST_FOREACH(boid&b, boids) {
+    vector accelleration = b.m_force / b.m_mass;
+
+    float v = norm_2(b.m_velocity);
+    b.m_position 
+      += b.m_velocity*dt 
+      + accelleration * 0.5 * std::pow(dt,2) ;
+
+    b.m_velocity += accelleration * 0.5 * dt;
+    b.m_old_accelleration = accelleration;
+    // // if(v > max_velocity)
+    // //   b.m_force += -b.m_velocity ;
+
+
+  }
   
   BOOST_FOREACH(boid& b, boids) {
-    BOOST_FOREACH(boid& t, targets){
+    BOOST_FOREACH(boid& t, targets) {
       vector dist = t.m_position - b.m_position;
-      const float norm_sq = inner_prod(dist) ;
+      float norm_sq = std::max<float>(inner_prod(dist), 1);
       float inorm = inv_sqrt(norm_sq)  ;
       vector dir = dist * inorm;
-      b.m_force +=  dir * std::pow(inorm,2) *G  ;
-      b.m_force +=  dir * std::pow(inorm,3) *Gx ;
+      b.m_force +=  - dir * std::pow(inorm,2) *G * t.m_mass * b.m_mass ;
+      b.m_force +=  dir * std::pow(inorm,2) *Gx * t.m_mass * b.m_mass;
     }
+    //break;
+    BOOST_FOREACH(boid& t, boids) {
+      if(&t==&b) continue;
+      vector dist = t.m_position - b.m_position;
+      float norm_sq = std::max<float>(inner_prod(dist), 1);
+      float inorm = inv_sqrt(norm_sq)  ;
+      vector dir = dist * inorm;
+      b.m_force +=  - dir * std::pow(inorm,2) *G *t.m_mass * b.m_mass;
+      b.m_force +=  dir * std::pow(inorm,3) *Gx *t.m_mass * b.m_mass ;
+    }
+
   }
 
 
@@ -254,36 +286,11 @@ void state_impl::update_state() {
     b.m_force = vector();
   }
 
-  /* update boid state */
+  /* update boid state -- B*/
   BOOST_FOREACH(boid&b, boids) {
-    //vector vnoise = (my_random(M_PI*2))*my_nrandom(0, noise*norm_2(b.m_force));
-    //  + vector(my_nrandom(0,abs(noise*b.m_force.x)),
-    // my_nrandom(0,abs(noise*b.m_force.y)));
-    //     double theta = atan2(b.m_force);    
-    //     vector accelleration =
-    //     inner_prod(b.m_force) > 1000000000?
-    //       vector  (
-    // 	       .1*target_accelleration*cos(theta),
-    // 	       .1*target_accelleration*sin(theta)
-    // 	       ) : b.m_force;
+    vector accelleration = b.m_force / b.m_mass;
 
-
-    vector accelleration = limit_magnitude(b.m_force,3);
-    float v = norm_2(b.m_velocity);
-    b.m_velocity += accelleration*dt;
-    vector old_vel = b.m_velocity;
-    double ratio = 1;
-
-    if (v > max_velocity)  {
-      ratio = max_velocity/v;
-    } else if (v < min_velocity())  {
-      ratio = min_velocity()/v;
-    }
-
-    b.m_velocity *= ratio;
-    accelleration = (b.m_velocity-old_vel)/dt;         
-    vector acc = accelleration*0.5*square(dt);
-    b.m_position += b.m_velocity*dt + acc;
+     b.m_velocity += accelleration * 0.5 * dt;
     check_limits(b);
     b.m_force = vector();
   }
@@ -353,8 +360,8 @@ void state_impl::random_small_change(){
     min_velocity_multiplier = 0.9;
   if (noise < 0.0)
     noise = 0.0;
-  if (max_velocity < 0.02)
-    max_velocity = 0.02;
+  if (max_velocity < 5)
+    max_velocity = 5;
   if (target_velocity < 0.0)
     target_velocity = 0.0;
   if (target_accelleration > target_velocity*0.7)
@@ -363,7 +370,7 @@ void state_impl::random_small_change(){
     target_accelleration = target_velocity*0.7;
   if (target_accelleration < 0.005)
     target_accelleration = 0.005;
-
+  target_velocity = 0;
   rsc_call_depth--;
 }
 
