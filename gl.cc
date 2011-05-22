@@ -12,7 +12,7 @@ namespace gl {
   /* function to release/destroy our resources and restoring the old
    * desktop */
 
-#if 0
+#if 1
 #define GLERR()                                     \
   do {                                              \
     GLenum err = glGetError();                      \
@@ -52,13 +52,13 @@ graphic_context::resize_window( int width_, int height_ ){
   glLoadIdentity( );
         
   /* Set our perspective */
-  //gluPerspective( 45.0f, ratio, 0.1f, 200.0f );
-  glOrtho(0, width, height, 0, -1, 1);
+  //gluPerspective( 45.0f, ratio, 1.0f, .0f );
+  glOrtho(0, 1, 1, 0, 1, 0);
 
   glClearAccum(0.0, 0.0, 0.0, 1.0);
   
   glClear(GL_ACCUM_BUFFER_BIT);
-  /* Make sure we're chaning the model view and not the projection */
+  /* Make sure we're changing the model view and not the projection */
   glMatrixMode( GL_MODELVIEW );
         
   /* Reset The View */
@@ -108,6 +108,8 @@ graphic_context::graphic_context(): width(), height() {
   glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
   glHint( GL_POINT_SMOOTH_HINT, GL_NICEST );
   glEnable( GL_TEXTURE_2D );
+  glEnable(GL_POINT_SPRITE);
+  glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 
   bind_texture(tex);
   GLERR();
@@ -138,7 +140,8 @@ graphic_context::swap_buffers() {
   /* Draw it to the screen */
   SDL_GL_SwapBuffers( );
 }
-        
+
+#if 0        
 // draw a square centered around p using the
 // currently bound texture.
 void draw_dot(const graphic_context&ctx,
@@ -171,6 +174,29 @@ void draw_dot(const graphic_context&ctx,
   glEnd( );
   GLERR();
 }
-        
+#else
+// draw a square centered around p using the
+// currently bound texture.
+void draw_dot(const graphic_context&ctx,
+              const point p, 
+              const color c,
+               float radius) {
+
+  const float x = p.x; //*ctx.width;
+  const float y = p.y; //*ctx.width;
+  const float z = p.z;
+  glColor4f( c.r,
+             c.g,
+             c.b,
+             c.a);
+  glPointSize(radius*2);
+  glBegin( GL_POINTS );
+  //std::cerr<<z<<"\n";
+  glVertex3f( x , y , -z);
+  glEnd( );
+  GLERR();
+}
+
+#endif        
 }
 }
