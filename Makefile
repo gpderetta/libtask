@@ -10,6 +10,7 @@ LDFLAGS=  	`sdl-config --cflags --libs`
 BOOST_PO_LIB=boost_program_options
 
 PROGRAMS=swarm
+TESTS=match_test
 
 swarm_SOURCES=		\
 	swarm.cc\
@@ -20,6 +21,10 @@ swarm_SOURCES=		\
 swarm_LIBS=	\
 	GL\
 	GLU\
+
+match_test_SOURCES=\
+	match_test.cc
+	
 
 
 include Makefile.common
