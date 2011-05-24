@@ -13,6 +13,18 @@ ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
 
+define TEST_template
+$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+
+$(1): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
+
+.PHONY: $$($(2)_LIBS:%=-l%)
+
+ALL_OBJS += $$($(2)_OBJS)
+ALL_DEPS += $$($(2)_DEPS)
+endef
+
 define LIBRARY_template
 $(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
 $(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
@@ -37,10 +49,14 @@ endef
 
 
 $(foreach prog,$(PROGRAMS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
+$(foreach test,$(TESTS),$(eval $(call PROGRAM_template,$(test),$(subst -,_,$(test)))))
 $(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 $(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 
 $(PROGRAMS):
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(TESTS):
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(LIBRARIES:%=%.so):
@@ -55,5 +71,12 @@ $(STATIC_LIBRARIES:%=%.a):
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_DEPS) $(PROGRAMS)  $(STATIC_LIBRARIES:%=%.a) *.d
+
+test : $(TESTS)
+
+run-%_test: %_test
+	./$(subst run-,,$@)
+
+run-test: test $(foreach test,$(TESTS),run-$(test))
 
 include $(ALL_DEPS)
