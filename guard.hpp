@@ -1,7 +1,7 @@
 #ifndef GPD_GUARD_HPP
 #define GPD_GUARD_HPP
 namespace gpd {
-namespace detail {
+namespace details {
 template<class F>
 struct guard_t {
     guard_t (F f) : dismissed(false), f(f) {}
