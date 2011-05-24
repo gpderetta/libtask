@@ -8,9 +8,9 @@ struct guard_t {
     bool dismissed;
     F f;
     void dismiss() { dismissed = true; }
-    ~guard() { if(!dismissed) f(); }
-}
+    ~guard_t() { if(!dismissed) f(); }
 };
+
 }
 template<class F>
 guard_t<F> guard(F f) { return guard_t<F>(f); }
