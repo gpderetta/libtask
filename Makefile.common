@@ -79,4 +79,7 @@ run-%_test: %_test
 
 run-test: test $(foreach test,$(TESTS),run-$(test))
 
-include $(ALL_DEPS)
+
+ifneq "$(MAKECMDGOALS)" "clean"
+  -include $(ALL_DEPS)
+endif
