@@ -1,231 +1,304 @@
-#ifndef SWITCH_HPP
-#define SWITCH_HPP
+#ifndef GPD_SWITCH_HPP
+#define GPD_SWITCH_HPP
 #include "forwarding.hpp"
+#include "guard.hpp"
+#include "bitcast.hpp"
+#include "switch_base.hpp"
+#include "tuple.hpp"
 #include <exception>
 #include <cstring>
 #include <iterator>
-#include <stdint.h>
+#include <stdlib.h>
+#include <memory>
 #include "macros.hpp"
 namespace gpd {
 
-typedef void* parm_t;
-
-struct cont { void * sp; };
-
-uint64_t stack_top(cont x) {
-    return *static_cast<uint64_t*>(x.sp);
-}
-
-void * return_address(cont x) {
-    return *std::next(static_cast<void **>(x.sp));
-}
-
-struct switch_ret {
-    cont    sp;
-    parm_t parm;
-};
-
-
-inline 
-switch_ret // rax, rdx
-__attribute__((noinline, noclone, returns_twice))
-stack_switch(cont sp,           // rdi
-             uint64_t topstack, // rsi 
-             parm_t parm        // rdx, passthru
-    ) {
-    asm (
-        "pushq %%rsi            \n\t" // put topstack on top of stack
-        "movq %%rsp,     %%rax \n\t"  // rsp -> switch_ret::sp
-        "leaq 8(%%rdi),  %%rsp \n\t"  // sp  -> rsp, skipping ret address and topstack
-        "jmp  *-8(%%rsp)       \n\t"  // jump to ret address
-        : "=a" (sp),
-          "+d" (parm) 
-        : "D" (sp), "S" (topstack)   );
-    return {sp, parm};
-}
-
-typedef switch_ret trampoline_t(cont calling_continuation, parm_t parm);
-
-inline 
-__attribute__((noinline, returns_twice, noclone))
-switch_ret execute_into(parm_t parm, // rdi
-                        cont    sp,   // rsi
-                        trampoline_t * ex    // rdx
-    ) {
-    asm (
-        "movq %%rsp,    %%rbx \n\t"
-        "movq %%rsi,    %%rsp \n\t"  
-        "leaq 4(%%rbx), %%rsi \n\t"
-        "jmp  *%%rdx       \n\t"  //tail call (rdi is passed through)
-        : "+D" (parm),
-          "+S" (sp) 
-        : "d" (ex)
-        );
-    return {sp, parm};
-}
-
-
-namespace detail {
-template<class F, class D>
-void startup_trampoline(cont sp, F*p); 
-}
-
-
-template<class Signature>
+template<class Signature = void()>
 class continuation;
 
+template<class Result, class... Args>
+struct continuation<Result(Args...)> {
+    typedef Result signature (Args...);
+    typedef Result result_type;
 
-struct exit_exception;
+    typedef continuation<result_type(Args...)> self;
 
-struct from_sp_tag{} from_sp;
+    continuation(const continuation&) = delete;
 
+    continuation(continuation&& rhs) 
+        : pair(rhs.pilfer()) { }
 
-template<class result_type, class... Args>
-struct continuation<result_type(Args...)> {
+    explicit continuation(switch_pair pair) : pair(pair) {}
 
-    continuation(const continuation&) = default;
-    continuation(cont sp,  from_sp_tag) : sp(sp) {}
+    self& operator=(continuation rhs) {
+        pair = rhs.pilfer();
+        return *this;
+    }
 
-    auto operator() (Args... args) -> result_type
+    self& operator() (Args... args) 
     {
-        auto arg_pack = pack(std::forward<Args>(args)...);
-        switch_ret sret = stack_switch(sp, 0, parm_t{&arg_pack}); 
-        sp = sret.sp;
-        return *static_cast<result_type*>(sret.parm);
-    };
+        assert(!terminated());
+        switch_pair cpair = pilfer(); 
+        auto p = std::tuple<Args...>(std::forward<Args>(args)...);
+        pair = stack_switch
+            (cpair.sp, &p); 
+        return *this;
+    }
+
+    result_type get() const {
+        assert(has_data());
+        return *static_cast<result_type*>(pair.parm);
+    }        
+
+    result_type operator*() const {
+        return get();
+    }
+
+    self& operator++()  {
+        return this->operator()();
+    }
+
+    // This is is arguably wrong
+    self& operator++(int)  {
+        return this->operator()();
+    }
+
+    explicit operator bool() const {
+        return has_data();
+    }
+
+    bool has_data() const {
+        return pair.parm;
+    }
+
+    bool terminated() const {
+        return !pair.sp;
+    }
+
+    switch_pair pilfer() {
+        switch_pair result = pair;
+        pair = {{0},0};
+        return result;
+    }
+
+    ~continuation() {
+        assert(!pair.sp);
+    }
 
 private:
-    cont sp;
+    switch_pair pair;
 };
 
+struct exit_continuation {
+    exit_continuation(const exit_continuation&) = delete;
 
-template<class T, class Enable = void>
-struct arg2arg {
-    static auto pack(T&x) as(&x);
-    static auto unpack(parm_t x) as(*static_cast<T*>(x));
-};
+    explicit exit_continuation(switch_pair pair) : pair(pair) {}
 
-template<class A, class B>
-A bitcast(B b) {
-    static_assert(sizeof(A) == sizeof(b), "size mismatch");
-    static_assert(std::is_pod<A>::value, "not a POD");
-    static_assert(std::is_pod<B>::value, "not a POD");
-    A ret;
-    memcpy(&ret, &b, sizeof(b));
-    return ret;
-}
+    exit_continuation(exit_continuation&& rhs) 
+        : pair(rhs.pilfer()) { }
+    
+    template<class Signature>
+    explicit exit_continuation(continuation<Signature>&& rhs) 
+        : pair(rhs.pilfer()) { }
 
-template<class T>
-struct arg2arg<T, typename std::enable_if<
-                      std::is_pod<T>::value &&
-                      sizeof(T) == sizeof(parm_t)>::type>  {
-    static auto pack(T x) as (bitcast<parm_t>(x));
-    static auto unpack(parm_t x) as (bitcast<T>(x));
-};
+    exit_continuation& operator=(exit_continuation rhs) {
+        pair = rhs.pilfer();
+        return *this;
+    }
 
-template<>
-struct arg2arg<void>  {
-    static void unpack(parm_t) {};
-};
+    switch_pair pilfer() {
+        switch_pair result = pair;
+        pair = {{0}, 0};
+        return result;
+    }
 
-template<class... T>
-struct arg2arg<std::tuple<T...>, void>  {
-    static auto pack(std::tuple<T...>& x) as (static_cast<parm_t>(&x));
-    static auto unpack(parm_t x) as (*static_cast<std::tuple<T...>*>(x));
-};
+    bool terminated() const {
+        return !pair.sp;
+    }
 
-template<class result_type, class Arg>
-struct continuation<result_type(Arg)> {
-    continuation(const continuation&) = default;
-    continuation(cont sp,  from_sp_tag) : sp(sp) {}
-
-    auto operator() (Arg arg) -> result_type
-    {
-        switch_ret sret = stack_switch(sp, 0, arg2arg<Arg>::pack(arg)); 
-        sp = sret.sp;
-        return arg2arg<result_type>::unpack(sret.parm);
-    };
-
+    ~exit_continuation() {
+        assert(!pair.sp);
+    }
 private:
-    cont sp;
+    switch_pair pair;
 };
 
-// template<class... Args, class Ret>
-// struct continuation<Ret(Args...)> {
-//     typedef std::tuple<Args...> arg_pack_t;
-//     typedef Ret result_type;
-
-//     auto operator() (Args... args) -> result_type
-//     {
-//         arg_pack_t arg_pack = pack(std::forward<Args>(args)...);
-//         switch_ret sret = stack_switch(m_sp, parm_t{&arg_pack}); 
-//         m_sp = sret.sp;
-//         return *reinterpret_cast<Ret*>(sret.parm);
-//     };
-
-// private:
-//     void * m_sp;
-// };
-
-
-typedef continuation<std::tuple<>()> exit_continuation;
-
-struct exit_exception : std::exception {
+struct exit_exception 
+    : std::exception {
     explicit exit_exception(exit_continuation exit_to)
         : exit_to(std::move(exit_to)) {}
     
     exit_continuation exit_to;
+    ~exit_exception() throw() {}
 };
 
-struct abnormal_exit_exception : exit_exception, std::nested_exception {
+struct abnormal_exit_exception 
+    : exit_exception, std::nested_exception {
     explicit abnormal_exit_exception(exit_continuation exit_to)
         : exit_exception(std::move(exit_to)) {}
+    ~abnormal_exit_exception() throw() {}
 };
 
-template<class F>
-auto with_escape_continuation(F &&f, exit_continuation c) -> decltype(F()) {
+template<class F, class Continuation>
+auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(F()) {
     try {
         f();
     } catch(...) {
-        throw abnormal_exit_exception(c);
+        throw abnormal_exit_exception(std::move(c));
     }
 }
 
+namespace details {
 
-namespace detail {
+void exit_to_trampoline(cont from, parm_t) {
+    throw exit_exception(exit_continuation({from,0}));
+}
 
 template<class Deleter>
-struct deleter_holder {
+struct cleanup_trampoline_args {
     Deleter deleter; // Remove if is_empty<Deleter>
-    std::exception_ptr ptr;
-};
-
-template<class T, class Deleter>
-struct startup_trampoline_ctx { // POD
-    startup_trampoline_ctx(startup_trampoline_ctx const&) = default;
-    T functor;
+    std::exception_ptr excp;
 };
 
 template<class Deleter>
-switch_ret destroy(cont, deleter_holder<Deleter> * holderp) {
-    Deleter d(std::move(holderp->deleter));
-    d();
-    return {0,0};
+switch_pair cleanup_trampoline(parm_t arg, cont)  {
+    auto argsp = static_cast<cleanup_trampoline_args<Deleter> *>(arg);
+    auto g = guard
+        ([&]{ 
+            Deleter d(std::move(argsp->deleter)); // Must not throw, othwise we leak memory
+            argsp->~cleanup_trampoline_args<Deleter>();
+            d();
+        });
+    if (argsp->excp) std::rethrow_exception(argsp->excp);
+    return switch_pair{{0}, 0};
 }
 
-template<class F, class D, class Continuation>
-void startup_trampoline(cont sp, startup_trampoline_ctx<F, D> * ctxp) {
-    auto ctx = *ctxp;
+template<class F, class Deleter>
+struct startup_trampoline_args { // POD
+    startup_trampoline_args(startup_trampoline_args const&) = default;
+    F functor;
+    cleanup_trampoline_args<Deleter> cleanup_args;
+};
+
+template<class Continuation, class F, class Deleter>
+switch_pair startup_trampoline(parm_t arg, cont sp) {
+    auto argsp = static_cast<startup_trampoline_args<F, Deleter>*>(arg);
+    auto cleanup_args = std::move(argsp->cleanup_args);
     try {
-        F f(std::forward<F>(ctx.functor)); 
-        sp  = f(Continuation(sp, from_sp));
+        F f(std::forward<F>(argsp->functor)); 
+        switch_pair pair = {sp,0};
+        sp = f(Continuation(pair)).pilfer().sp;
+    } catch(abnormal_exit_exception& e) {
+        sp = e.exit_to.pilfer().sp;
+        cleanup_args.excp = e.nested_ptr();
     } catch(exit_exception& e) {
-        sp = e.exit_to.sp;
-    }
-    execute_into(sp, 0); 
+        sp = e.exit_to.pilfer().sp;
+    } 
+    return execute_into(&cleanup_args, sp, &cleanup_trampoline<Deleter>); 
 }
+ 
+// Deleter must be nothrow move constructible 
+template<class Continuation, class F, class Deleter>
+switch_pair
+run_startup_trampoline_into(cont cs, F && f, Deleter d) {
+    startup_trampoline_args<F, Deleter> args{ 
+        std::forward<F>(f),
+        { std::move(d), 0 }
+    };
+    return execute_into(&args, cs, &startup_trampoline<Continuation, F, Deleter>);
 }
 
+struct default_stack_allocator {
+    static const size_t alignment = 16;
+
+    static void * allocate(size_t size) {
+        void * result = 0;
+        int ret = ::posix_memalign(&result, alignment, size);
+        assert(ret != EINVAL);
+        if(ret == ENOMEM) 
+            throw  std::bad_alloc();
+        return result;
+    }
+
+    static void deallocate(void * ptr) throw() {
+        free(ptr);
+    }
+};
+
+template<class Signature>
+void signal_exit_to(continuation<Signature> c) {
+    execute_into(0, c.sp, &details::exit_to_trampoline);
+}
+
+template<class Signature>
+struct reverse_signature; 
+
+template<class... Ret, class... Args>
+struct reverse_signature<std::tuple<Ret...>(Args...)> {
+    typedef std::tuple<Args...> type (Ret...);
+};
+
+template<class... Args>
+struct reverse_signature<void(Args...)> {
+    typedef std::tuple<Args...> type ();
+};
+
+template<class... Ret>
+struct reverse_signature<std::tuple<Ret...>()> {
+    typedef void type (Ret...);
+};
+
+template<>
+struct reverse_signature<void()> {
+    typedef void type ();
+};
+
+
+}
+
+template<class Signature, 
+         class F,
+         class StackAlloc = details::default_stack_allocator> 
+continuation<Signature> create_context(F&& f, size_t stack_size = 1024*1024, 
+                                       StackAlloc alloc = StackAlloc()) 
+{
+    void * stackp = alloc.allocate(stack_size);
+    cont cs { stack_bottom(stackp, stack_size) };
+        
+    auto deleter =  [=] { alloc.deallocate(stackp); };
+
+    typedef typename details::reverse_signature<Signature>::type reverse_signature;
+    return continuation<Signature>
+    { details::run_startup_trampoline_into<continuation<reverse_signature> >
+            (cs, std::forward<F>(f), deleter) };
+}
+
+namespace details {
+
+template<class Sig> struct extract_signature;
+
+template<class T, class Ret, class... Args>
+struct extract_signature<Ret(T::*)(Args...)> { typedef Ret type (Args...); };
+template<class T, class Ret, class... Args>
+struct extract_signature<Ret(T::*)(Args...) const> { typedef Ret type (Args...); };
+
+template<class Sig>
+struct parm0;
+
+template<class Ret, class Arg0, class... Args>
+struct parm0<Ret(Arg0, Args...)> { typedef Arg0 type; };
+
+}
+
+template<class F, 
+         class FSig = typename details::extract_signature<decltype(&F::operator())>::type,
+         class Parm = typename details::parm0<FSig>::type,
+         class RSig = typename Parm::signature,
+         class Sig  = typename details::reverse_signature<RSig>::type
+ >
+continuation<Sig> callcc(F f) {
+    return create_context<Sig>(f);
+}
 
 
 
