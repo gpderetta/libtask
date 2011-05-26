@@ -33,9 +33,9 @@ template<class ...Types>
 auto indices(std::tuple<Types...> const&) 
     as (typename make_indices<Types...>::type());
 
-template <class F, class Tuple, int... Indices>
-auto forward0(F f, index_tuple<Indices...>, Tuple&& args)
-    as ( f(forward_get<Indices>(std::forward<Tuple>(args))...) );
+template <class F, class Tuple, int... Indices, class... Args>
+auto forward0(F f, index_tuple<Indices...>, Tuple&& tup, Args&&... args)
+    as ( f(forward_get<Indices>(std::forward<Tuple>(tup))..., std::forward<Args>(args)...) );
 
 template<class F, class Tuple, int ... Indices>
 auto transform0(F f, index_tuple<Indices...> idx, Tuple&& t) 
@@ -59,9 +59,9 @@ auto replacer(T&&... t) id(replacer_t<T...>, replacer_t<T...>{ pack(std::forward
 }
 
     
-template <class F, class Tuple>
-auto forward(F f, Tuple tuple)
-    as ( details::forward0(f, details::indices(tuple), tuple) ) ;
+template <class F, class Tuple, class... Args>
+auto forward(F f, Tuple tuple, Args&&... args)
+    as (details::forward0(f, details::indices(tuple), tuple, std::forward<Args>(args)...) ) ;
 
 template<class F, class Tuple>
 auto transform(F f, Tuple&& t) 
