@@ -26,14 +26,6 @@ swarm_LIBS=	\
 	GL\
 	GLU\
 
-match_test_SOURCES=\
-	match_test.cc
-
-switch_test_SOURCES=\
-	switch_test.cc
-
-mpsc_queue_test_SOURCES=\
-	mpsc_queue_test.cc
 
 include Makefile.common
 
