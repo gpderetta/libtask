@@ -1,7 +1,20 @@
-.PHONY: clean all test
+.PHONY: clean all test run-test
 all: $(PROGRAMS) $(LIBRARIES:%=%.so) $(STATIC_LIBRARIES:%=%.a)
 
-define PROGRAM_template
+SUPPRESS=1
+
+ifeq ($(TERM),dumb) 
+msg_header="[%s] %-30s"
+msg_fail="[%s]\n"
+msg_pass="[%s]\n"
+else
+msg_header="[\033[01;33m%s\033[00m] %-30s"
+msg_fail="[\033[01;31m%s\033[00m]\n"
+msg_pass="[\033[01;32m%s\033[00m]\n"
+endif
+
+
+define TEST_template
 $(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
 $(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
 
@@ -13,12 +26,14 @@ ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
 
-
-
-define TEST_template
-if
-$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
-$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+define PROGRAM_template
+ifndef $(2)_SOURCES
+	$(2)_OBJS=$(1).o
+	$(2)_DEPS=$(1).d
+else
+	$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o) $(1).o
+	$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d) $(1).d
+endif
 
 $(1): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
 
@@ -29,9 +44,6 @@ ALL_DEPS += $$($(2)_DEPS)
 endef
 
 define LIBRARY_template
-ifndef $(2)_SOURCES
-	$(2)_SOURCES=$(2).cc
-endif
 $(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
 $(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
 
@@ -55,50 +67,80 @@ endef
 
 
 $(foreach prog,$(PROGRAMS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
-$(foreach test,$(TESTS),$(eval $(call PROGRAM_template,$(test),$(subst -,_,$(test)))))
+$(foreach prog,$(TESTS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
 $(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 $(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 
+
 $(PROGRAMS):
-	@printf "\033[01;33mLK\033[00m %s\n" $@; \
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	@printf $(msg_header) LK $@; \
+	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) " ; \
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	if $$cmd   ; then \
+		printf $(msg_pass) OK ;\
+	else 	\
+		printf $(msg_fail) FAIL  ;\
+	fi ; \
 
 $(TESTS):
-	@printf "\033[01;33mLK\033[00m %s\n" $@; \
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	@printf $(msg_header) LK $@; \
+	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) "; \
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	if $$cmd   ; then \
+		printf $(msg_pass) OK ;\
+	else 	\
+		printf $(msg_fail) FAIL  ;\
+	fi ; \
 
 $(LIBRARIES:%=%.so):
-	@printf "\033[01;33mLK\033[00m %s\n" $@; \
-	$(CXX) -shared $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	@printf $(msg_header) LK $@; \
+	cmd="$(CXX) -shared $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)" ; \
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	if $$cmd   ; then \
+		printf $(msg_pass) OK ;\
+	else 	\
+		printf $(msg_fail) FAIL  ;\
+	fi ; \
 
 $(STATIC_LIBRARIES:%=%.a):
-	@printf "\033[01;33mAR\033[00m %s\n" $@; \
+	@printf $(msg_header) AR $@; \
 	ar rcs  $@ $^
 
 %.d: %.cc
-	@printf "\033[01;33mDP\033[00m %s\n" $@; \
+	@printf $(msg_header) DP $@; \
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF $@ $<; \
-	perl -pi -e 's{^(.*?)\.o[ :]+}{$$1.o $$1.d :}g' $@
+	perl -pi -e 's{^(.*?)\.o[ :]+}{$$1.o $$1.d :}g' $@ ; \
+	if [ $$? -eq 0 ]  ; then \
+		printf $(msg_pass) OK ;\
+	else 	\
+		printf $(msg_fail) FAIL  ;\
+	fi ; \
+
 
 %.o: %.cc
-	@printf "\033[01;33mCC\033[00m %s\n" $@; \
-	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<; \
-
+	@printf $(msg_header) CC $@; \
+	cmd="$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $< "; \
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	if $$cmd   ; then \
+		printf $(msg_pass) OK ;\
+	else 	\
+		printf $(msg_fail) FAIL  ;\
+	fi ; \
 
 clean:
 	@echo Cleaning... ; \
-	rm -f $(ALL_OBJS) $(ALL_DEPS) $(PROGRAMS)  $(STATIC_LIBRARIES:%=%.a) *.d
+	rm -f $(ALL_OBJS) $(ALL_DEPS) $(PROGRAMS) $(TESTS) $(STATIC_LIBRARIES:%=%.a) *.d
 
 test : $(TESTS)
 
 
 run-%_test: %_test
 	@test=$(subst run-,,$@) ;	\
-    printf "\033[01;33mTT\033[00m" ; \
-	if ((( ./$$test ) || exit 1) )  ; then \
-		printf " %-30s[\033[01;32mPASS\033[00m]\n" $$test ;\
+    printf $(msg_header) TT $$test ; \
+	if ./$$test   ; then \
+		printf $(msg_pass) PASS ;\
 	else 	\
-		printf " %-30s[\033[01;31mFAIL\033[00m]\n" $$test ;\
+		printf $(msg_fail) FAIL  ;\
 	fi ; \
 
 run-test: test $(foreach test,$(TESTS),run-$(test))
