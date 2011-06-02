@@ -1,4 +1,4 @@
-.PHONY: clean all
+.PHONY: clean all test
 all: $(PROGRAMS) $(LIBRARIES:%=%.so) $(STATIC_LIBRARIES:%=%.a)
 
 define PROGRAM_template
@@ -13,7 +13,10 @@ ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
 
+
+
 define TEST_template
+if
 $(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
 $(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
 
@@ -26,6 +29,9 @@ ALL_DEPS += $$($(2)_DEPS)
 endef
 
 define LIBRARY_template
+ifndef $(2)_SOURCES
+	$(2)_SOURCES=$(2).cc
+endif
 $(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
 $(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
 
@@ -54,28 +60,46 @@ $(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(l
 $(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 
 $(PROGRAMS):
+	@printf "\033[01;33mLK\033[00m %s\n" $@; \
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(TESTS):
+	@printf "\033[01;33mLK\033[00m %s\n" $@; \
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(LIBRARIES:%=%.so):
+	@printf "\033[01;33mLK\033[00m %s\n" $@; \
 	$(CXX) -shared $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(STATIC_LIBRARIES:%=%.a):
+	@printf "\033[01;33mAR\033[00m %s\n" $@; \
 	ar rcs  $@ $^
 
 %.d: %.cc
+	@printf "\033[01;33mDP\033[00m %s\n" $@; \
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF $@ $<; \
 	perl -pi -e 's{^(.*?)\.o[ :]+}{$$1.o $$1.d :}g' $@
 
+%.o: %.cc
+	@printf "\033[01;33mCC\033[00m %s\n" $@; \
+	$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $<; \
+
+
 clean:
+	@echo Cleaning... ; \
 	rm -f $(ALL_OBJS) $(ALL_DEPS) $(PROGRAMS)  $(STATIC_LIBRARIES:%=%.a) *.d
 
 test : $(TESTS)
 
+
 run-%_test: %_test
-	./$(subst run-,,$@)
+	@test=$(subst run-,,$@) ;	\
+    printf "\033[01;33mTT\033[00m" ; \
+	if ((( ./$$test ) || exit 1) )  ; then \
+		printf " %-30s[\033[01;32mPASS\033[00m]\n" $$test ;\
+	else 	\
+		printf " %-30s[\033[01;31mFAIL\033[00m]\n" $$test ;\
+	fi ; \
 
 run-test: test $(foreach test,$(TESTS),run-$(test))
 
