@@ -1,43 +1,22 @@
 #ifndef GPD_MPSC_QUEUE_HPP
 #define GPD_MPSC_QUEUE_HPP
 #include <utility>
-#include <cassert>
+#include "xassert.hpp"
+#include "node.hpp"
+#include "atomic.hpp"
+
 namespace gpd {
 
-void cbarrier() {
-    asm volatile("":::"memory");
+
+template<class T>
+void store_release(atomic<T*>& x, T* value) {
+    x.store(value, memory_order_release);
 }
 
 template<class T>
-T load_acquire(T volatile &x) {
-    cbarrier();
-    auto ret = x;
-    return ret;
+T load_acquire(const atomic<T>& x) {
+    return x.load();
 }
-
-template<class T, class T2>
-void store_release(T volatile &x, T2 value) {
-    x = value;
-    cbarrier();
-}
-
-template<class T>
-T exchange(T volatile& x, T value) {
-    auto ret = __sync_lock_test_and_set(&x, value);
-    cbarrier();
-    return ret;
-}
-
-template<class T>
-bool bool_cas(T volatile& x, T oldval, T newval) {
-    return __sync_bool_compare_and_swap(&x, oldval, newval);
-}
-
-struct node_base
-{
-    explicit node_base(node_base * next = 0) : m_next(next) {}
-    node_base* volatile  m_next;
-};
 
 // MP-SC queue_base
 struct mpsc_queue_base
@@ -47,32 +26,32 @@ struct mpsc_queue_base
         , m_tail(0)
     {}
 
-    void push(node_base* n) {
-        n->m_next = 0;
-        node_base* prev = exchange(m_head, n);
-        assert(prev);
+    void push(node* n) {
+        n->m_next.store(0, memory_order_relaxed);
+        node* prev = m_head.exchange(n);
+        XASSERT(prev);
         store_release(prev->m_next, n);
     }
 
-    node_base* pop()  {
+    node* pop()  {
 
-        node_base* tail = load_acquire(m_tail.m_next);
+        node* tail = load_acquire(m_tail.m_next);
         if (0 == tail)
             return 0;
-        node_base* next = load_acquire(tail->m_next);
+        node* next = load_acquire(tail->m_next);
 
         if (next) {
             store_release(m_tail.m_next, next);
             return tail;
         }
 
-        node_base* head = load_acquire(m_head);
+        node* head = load_acquire(m_head);
 
         if (tail != head)
             return 0;
-        store_release(m_tail.m_next, nullptr);
+        store_release(m_tail.m_next, (node*)0);
 
-        if (bool_cas(m_head, head,  &m_tail))  {
+        if (m_head.compare_exchange_strong(head,  &m_tail))  {
             return tail;
         }
 
@@ -85,8 +64,8 @@ struct mpsc_queue_base
         return 0;
     } 
 
-    node_base*  volatile m_head;
-    node_base            m_tail;
+    atomic<node*>  m_head;
+    node           m_tail;
 };
 
 template<class Node>
@@ -95,8 +74,8 @@ struct mpsc_queue : mpsc_queue_base{
 
     typedef Node node;
 
-    static_assert(std::is_base_of<node_base, Node>::value, 
-                  "Node must derive from queue_base::node_base");
+    static_assert(std::is_base_of< ::gpd::node, node>::value, 
+                  "Node must derive from gpd::node");
  
     void push(node* n) {
         mpsc_queue_base::push(n);
@@ -104,7 +83,7 @@ struct mpsc_queue : mpsc_queue_base{
 
     node *pop() {
         auto p = mpsc_queue_base::pop();
-        assert(p != & m_tail);
+        XASSERT(p != & m_tail);
         return static_cast<node*>(p);
     }
 };

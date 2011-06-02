@@ -3,7 +3,7 @@
 #include <vector>
 #include <iostream>      
 
-struct val : gpd::node_base {
+struct val : gpd::node {
     val(int id, int from) : id(id), from(from) {}
     const int id;
     int from;
