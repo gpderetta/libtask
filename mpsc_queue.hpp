@@ -7,17 +7,6 @@
 
 namespace gpd {
 
-
-template<class T>
-void store_release(atomic<T*>& x, T* value) {
-    x.store(value, memory_order_release);
-}
-
-template<class T>
-T load_acquire(const atomic<T>& x) {
-    return x.load();
-}
-
 // MP-SC queue_base
 struct mpsc_queue_base
 {
@@ -56,8 +45,7 @@ struct mpsc_queue_base
         }
 
         next = load_acquire(tail->m_next);
-        if (next)
-        {
+        if (next) {
             store_release(m_tail.m_next, next);
             return tail;
         }
@@ -87,9 +75,6 @@ struct mpsc_queue : mpsc_queue_base{
         return static_cast<node*>(p);
     }
 };
-
-#define MPSCQ_STATIC_INIT(self) {&self.tail, 0}
-
 
 }
 #endif
