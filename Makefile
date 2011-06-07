@@ -1,5 +1,5 @@
 FEATURE_FLAGS= --std=c++0x
-DEVEL_FLAGS= -W -Wall -O3 -mfpmath=sse -march=native -ffast-math -fopenmp -g 
+DEVEL_FLAGS= -W -Wall -O1 -mfpmath=sse -march=native -ffast-math -fopenmp -g  -mno-red-zone  -fnon-call-exceptions -fasynchronous-unwind-tables 
 
 INCLUDE=
 CXX=g++-4.6
@@ -14,6 +14,7 @@ PROGRAMS=swarm
 TESTS=match_test\
 	switch_test \
 	mpsc_queue_test  \
+	throw_test   \
 
 swarm_SOURCES=		\
 	swarm.cc\
