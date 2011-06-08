@@ -42,7 +42,7 @@ class futex : atomic<int> {
         return wait_result(ret);
     }
 
-    int signal(int n) {
+    int signal(int n = INT_MAX) {
         int ret = details::sys_futex(this, FUTEX_WAKE_PRIVATE, value, 0, 0, 0);
         assert(ret != -1);
         return ret;
