@@ -6,7 +6,7 @@
 #include "macros.hpp"
 namespace gpd {
 
-template<int> struct placeholder;
+template<int> struct placeholder {};
 namespace details {
 namespace mpl = boost::mpl;
 
@@ -29,7 +29,7 @@ auto pack(Args&&... args) -> std::tuple<typename details::pack_arg<Args>::type..
 }
 
 template<int i, class Tuple>
-auto forward_get(Tuple t) as
+auto forward_get(Tuple& t) as
     (std::forward<typename std::tuple_element<i, Tuple>::type>(std::get<i>(t)));
 
 
