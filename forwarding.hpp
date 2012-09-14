@@ -34,44 +34,72 @@ auto indices(std::tuple<Types...> const&)
     as (typename make_indices<Types...>::type());
 
 template <class F, class Tuple, int... Indices, class... Args>
-auto forward0(F f, index_tuple<Indices...>, Tuple&& tup, Args&&... args)
-    as ( f(forward_get<Indices>(std::forward<Tuple>(tup))..., std::forward<Args>(args)...) );
+auto forward0(F&& f, index_tuple<Indices...>, Tuple&& tup, Args&&... args)
+    as ( f(forward_get<Indices>(tup)..., std::forward<Args>(args)...) );
 
 template<class F, class Tuple, int ... Indices>
-auto transform0(F f, index_tuple<Indices...> idx, Tuple&& t) 
-    as ( pack (f(forward_get<Indices>(t))...) );
+auto transform0(F&& f, index_tuple<Indices...>, Tuple&& t) 
+    id(std::tuple<decltype(f(forward_get<Indices>(t)))...>,
+       result(f(forward_get<Indices>(t))...) );
 
-template<class... T>
+template<class Pack>
 struct replacer_t {
- 
-    std::tuple<T&&...> packed_args;
-    template<class Arg>
+    Pack packed_args;
+    template<class Arg> 
     auto operator()(Arg&& x) as (std::forward<Arg>(x));
 
     template<int I>
     auto operator()(placeholder<I>) as (forward_get<I>(packed_args));
-
 };
 
-template<class ...T>
-auto replacer(T&&... t) id(replacer_t<T...>, replacer_t<T...>{ pack(std::forward<T>(t)...)});
+template<class Pack, class XPack = typename std::remove_reference<Pack>::type >
+auto replacer(Pack&& p) ->
+    replacer_t<XPack>
+{ return { std::forward<Pack>(p) }; }
+ 
+}
+   
+template <class F, class Tuple, class... Args>
+auto forward(F&& f, Tuple&& tuple, Args&&... args)
+    as ( details::forward0(std::forward<F>(f), 
+                           details::indices(tuple), 
+                           std::forward<Tuple>(tuple), 
+                           std::forward<Args>(args)...) ) ;
+
+template<class F, class Tuple>
+auto transform(F&& f, Tuple&& t) 
+    as( details::transform0(std::forward<F>(f), 
+                            details::indices(t), 
+                            std::forward<Tuple>(t)) );
+
+template<class Tuple, class ...Args>
+auto replace_placeholders(Tuple&& closure, Args&&... args) 
+    as( transform(details::replacer(pack(std::forward<Args>(args)...)), 
+                  std::forward<Tuple>(closure)) );
+
+namespace details {
+template<class F, class Closure>
+struct binder_t {
+    F f; Closure closure;
+
+    template<class... Args>
+    auto operator()(Args&&... args)
+        as( forward(f, replace_placeholders
+                    (closure, std::forward<Args>(args)...)) );
+};
+
+template<class F, class Closure>
+auto binder(F&& f, Closure&& closure) -> binder_t<F, Closure> {
+    return { std::forward<F>(f),  std::forward<Closure>(closure) };
+}
+
 
 }
 
-    
-template <class F, class Tuple, class... Args>
-auto forward(F f, Tuple tuple, Args&&... args)
-    as (details::forward0(f, details::indices(tuple), tuple, std::forward<Args>(args)...) ) ;
-
-template<class F, class Tuple>
-auto transform(F f, Tuple&& t) 
-    as( details::transform0(f, details::indices(t), std::forward<Tuple>(t)) );
-
-template<class Tuple, class ...T1>
-auto replace_placeholders(Tuple&& closure, T1&&... args) 
-    as(transform(details::replacer(std::forward<T1>(args)...), std::forward<Tuple>(closure)));
-
-
+template<class F, class... Args>
+auto bind(F&& f,  Args&&... args) 
+    as( details::binder(std::forward<F>(f),
+                        std::make_tuple(std::forward<Args>(args)...)) );
 
 }
 #include "macros.hpp"
