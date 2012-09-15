@@ -141,9 +141,9 @@ int main() {
             {
                 // XXX  std::get won't move by default because
                 // it does not preserve rvalue references. GCC bug?
-                std::string s  = forward_get<1>(*c);
-                std::string s2 = forward_get<2>(*c);               
-                noncopyable n  = forward_get<3>(*c);
+                std::string s  = xget<1>(*c);
+                std::string s2 = xget<2>(*c);               
+                noncopyable n  = xget<3>(*c);
 
                 assert(n.live == true);
                 assert(std::get<3>(*c).live == false);
