@@ -99,6 +99,20 @@ int main() {
         c();
     }
     {
+        int * ip = 0;
+        auto c = callcc([&](continuation<void(int&)> x) {
+                int i = 0;
+                ip = &i;
+                x(i);
+                assert(i == 42);
+                return x;
+            });
+        assert(&*c == ip);
+        *c = 42;
+        c();
+    }
+
+    {
         auto c = callcc([&](continuation<void(int, int)> x) {
                 x(0, 1);
                 return x;
@@ -125,11 +139,11 @@ int main() {
             int i = std::get<0>(*c);
             // moves shouldn't be necessary here
             {
-                // XXX this won't move by default because std::get returns const &
-                // GCC  bug?
-                std::string s  = std::move(std::get<1>(*c));
-                std::string s2 = std::move(std::get<2>(*c));               
-                noncopyable n  = std::move(std::get<3>(*c));
+                // XXX  std::get won't move by default because
+                // it does not preserve rvalue references. GCC bug?
+                std::string s  = forward_get<1>(*c);
+                std::string s2 = forward_get<2>(*c);               
+                noncopyable n  = forward_get<3>(*c);
 
                 assert(n.live == true);
                 assert(std::get<3>(*c).live == false);
