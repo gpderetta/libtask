@@ -14,7 +14,7 @@ int main() {
     {
         auto c = callcc([](continuation<void(int)> c) { 
                 c(42);
-                return std::move(c);
+                return c;
             });
         assert(*c == 42);
         c();
@@ -22,16 +22,16 @@ int main() {
     {
         auto c = callcc([](continuation<void(noncopyable)> c) { 
                 c(noncopyable());
-                return std::move(c);
+                return c;
             });
         noncopyable nc = *c;
         (void)nc;
-        c();
+        c(); 
     }
     {
         auto c = callcc([](continuation<int()> c) {
                 assert(*c() == 42);
-                return std::move(c);
+                return c;
             });
         c(42);
     }
@@ -39,7 +39,7 @@ int main() {
         auto c = callcc([](continuation<noncopyable()> c) {
                 noncopyable nc = *c();
                 (void)nc;
-                return std::move(c);
+                return c;
             });
         c(noncopyable());
     }
@@ -49,7 +49,7 @@ int main() {
                 assert(i == 42);
                 x();
                 assert(i == 42);
-                return std::move(x);
+                return x;
             });
         i = 99;
         c();
@@ -60,7 +60,7 @@ int main() {
                 assert(i == 42);
                 x();
                 assert(i == 99);
-                return std::move(x);
+                return x;
             });
         i = 99;
         c();
@@ -73,7 +73,7 @@ int main() {
                 x();
                 *x;
                 assert(i == 99);
-                return std::move(x);
+                return x;
             });
         i = 99;
         //int x;
@@ -83,7 +83,7 @@ int main() {
         int i = 0;
         auto c = callcc([&](continuation<int&()> x) {
                 assert(&*x() == &i);
-                return std::move(x);
+                return x;
             });
         c(i);
     }
@@ -92,7 +92,7 @@ int main() {
         auto c = callcc([&](continuation<void(int&)> x) {
                 x(i);
                 assert(i == 42);
-                return std::move(x);
+                return x;
             });
         assert(&*c == &i);
         *c = 42;
@@ -101,7 +101,7 @@ int main() {
     {
         auto c = callcc([&](continuation<void(int, int)> x) {
                 x(0, 1);
-                return std::move(x);
+                return x;
             });
         int a, b;
         std::tie(a, b) = *c;
@@ -118,7 +118,7 @@ int main() {
                 assert(nc.live == false);
                 assert(i == j); 
             }
-            return std::move(c);
+            return c;
         };
         int j = -1;
         for(auto c = callcc(f) ; c ; c(j)) {
@@ -145,7 +145,7 @@ int main() {
         std::vector<int> v = { 0,1,2,3,4,5,6,7,8,9,10 };
         auto f = [=](continuation<void(int)> c) { 
             std::for_each(v.begin(), v.end(), [&](int i){ c(i); });
-            return std::move(c);
+            return c;
         };
     
         for(auto i = callcc(f) ; i ; i++) {
@@ -167,7 +167,7 @@ int main() {
                           x(); 
                           i--;
                       }
-                      return std::move(x);
+                      return x;
                   }));
 
         while(!cvector.empty()) {
@@ -195,7 +195,7 @@ int main() {
                         throw;
                     }
                     assert(false && "unreachable");
-                    return std::move(c);
+                    return c;
                 });
             try {
                 splice(std::move(f), [] ()   { throw 42; } );
@@ -213,7 +213,7 @@ int main() {
         auto f = callcc([&](continuation<std::tuple<int,int>()> c){
                 auto i = *c();  
                 assert(i == ret);
-                return std::move(c);
+                return c;
             });
             
         splice(std::move(f), [&] () -> decltype(ret)&  { return ret; } );
@@ -224,7 +224,7 @@ int main() {
         auto f = callcc([&](continuation<int()> c){
                 auto i = *c();  
                 assert(i == std::get<0>(ret));
-                return std::move(c);
+                return c;
             });
             
         splice(std::move(f), [&] () -> decltype(ret)&  { return ret; } );
@@ -232,23 +232,23 @@ int main() {
     {
         auto f = callcc([&](continuation<void()> c){
                 c();  
-                return std::move(c);
+                return c;
             });
             
-        splicecc(std::move(f), [&] (continuation<void()> x)   { return std::move(x); } );
+        splicecc(std::move(f), [&] (continuation<void()> x)   { return x; } );
     }
     {
         auto f = callcc([&](continuation<int()> c){
                 c();  
-                return std::move(c);
+                return c;
             });
             
-        splicecc(std::move(f), [&] (continuation<int()> x)   { return std::move(x); } );
+        splicecc(std::move(f), [&] (continuation<int()> x)   { return x; } );
     }
     {
         auto f = callcc([&](continuation<void()> c){
                 c();  
-                return std::move(c);
+                return c;
             });
         signal_exit(std::move(f));
     }
@@ -292,9 +292,8 @@ int main() {
         f1(42);
         assert(f1);
         auto f2 = splicecc_ex<void(float)>
-            (std::move(f1), [&] (continuation<float()> x)   
-             { throw std::move(x);
-               return continuation<int()>(); });
+            (std::move(f1), [&] (continuation<float()> x) -> continuation<int()>
+             { throw std::move(x); });
         f2(42.);
     }
 
