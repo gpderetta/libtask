@@ -158,8 +158,7 @@ int main() {
     {
         std::vector<int> v = { 0,1,2,3,4,5,6,7,8,9,10 };
         auto f = [=](continuation<void(int)> c) { 
-            std::for_each(v.begin(), v.end(), [&](int i){ c(i); });
-            return c;
+            return std::for_each(v.begin(), v.end(), std::move(c));
         };
     
         for(auto i = callcc(f) ; i ; i++) {
