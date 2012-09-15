@@ -29,6 +29,10 @@ auto pack(Args&&... args) -> std::tuple<typename details::pack_arg<Args>::type..
 }
 
 template<int i, class Tuple>
+auto forward_get(Tuple&& t) as
+    (std::forward<typename std::tuple_element<i, Tuple>::type>(std::get<i>(t)));
+
+template<int i, class Tuple>
 auto forward_get(Tuple& t) as
     (std::forward<typename std::tuple_element<i, Tuple>::type>(std::get<i>(t)));
 
