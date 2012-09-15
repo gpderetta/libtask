@@ -137,7 +137,6 @@ int main() {
         int j = -1;
         for(auto c = callcc(f) ; c ; c(j)) {
             int i = std::get<0>(*c);
-            // moves shouldn't be necessary here
             {
                 // XXX  std::get won't move by default because
                 // it does not preserve rvalue references. GCC bug?
@@ -166,6 +165,45 @@ int main() {
             assert(v[x] == x);
         }
     }
+    {
+        auto set_difference = [](std::vector<int> & a,
+                                 std::vector<int> & b) {
+            return callcc([&](continuation<void(int&)> c) {
+                std::set_difference(a.begin(), a.end(),
+                                    b.begin(), b.end(),
+                                    begin(c));
+                return c;
+                });
+        };
+
+        std::vector<int> a = { 0,1,2,3,4,5 };
+        std::vector<int> b = { 3,4,5,6,7,8 };
+        std::vector<int> expected_result = { 0,1,2 };
+
+        auto range = set_difference(a,b);
+        std::vector<int> result(begin(range), end(range));
+        assert(result == expected_result);
+    }
+    {
+        auto merge = [](std::vector<int> & a,
+                        std::vector<int> & b) {
+            return callcc([&](continuation<void(int&)> c) {
+                    std::merge(a.begin(), a.end(),
+                               b.begin(), b.end(),
+                               begin(c));
+                    return c;
+                });
+        };
+
+        std::vector<int> a = { 0,2,4,6,8,10 };
+        std::vector<int> b = { 1,3,5,7,9,11 };
+
+        int i = 0;
+        for(auto& x: merge(a,b)){
+            assert(x == i++);
+        }
+    }
+
     {
         typedef continuation<> task;
         std::vector<task> cvector;
@@ -211,7 +249,7 @@ int main() {
                     return c;
                 });
             try {
-                splice(std::move(f), [] ()   { throw 42; } );
+                splice(std::move(f), [] { throw 42; } );
             } catch(int i) {
                 assert(i == 42);
                 caught++;

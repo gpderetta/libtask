@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <memory>
 #include "macros.hpp"
+#include <iterator>
 namespace gpd {
 
 namespace details {
@@ -444,6 +445,68 @@ void signal_exit(continuation<Signature> c) {
             return std::move(c);
         });
 }
+
+template<class Continuation>
+struct output_iterator_adaptor  {
+    typedef std::output_iterator_tag iterator_category;
+    typedef void value_type;
+    typedef size_t difference_type;
+    typedef void* pointer;
+    typedef void reference;
+    Continuation& c;
+    template<class T>
+    output_iterator_adaptor& operator=(T&&x) {
+        c(std::forward<T>(x));
+        return *this;
+    }
+    output_iterator_adaptor& operator++() {return *this; }
+    output_iterator_adaptor& operator*() { return *this; }
+};
+
+
+template<class Continuation>
+struct input_iterator_adaptor  {
+    Continuation* c;
+
+    typedef std::input_iterator_tag iterator_category;
+    typedef typename std::remove_reference<decltype(*(*c)())>::type value_type;
+    typedef size_t difference_type;
+    typedef value_type* pointer;
+    typedef decltype(*(*c)()) reference;
+
+    input_iterator_adaptor& operator=(input_iterator_adaptor const&x) {
+        c = x.c;
+    }
+    input_iterator_adaptor& operator++() {
+        (*c)();
+        return *this;
+    }
+    reference operator*() { 
+        return **c;
+
+    }
+
+    bool operator==(input_iterator_adaptor const&) const {
+        return !*c;
+    }
+    bool operator!=(input_iterator_adaptor const&) const {
+        return bool(*c);
+    }
+
+};
+
+template<class T>
+output_iterator_adaptor<continuation<void(T)>>
+begin(continuation<void(T)>& c) { return {c}; }
+
+template<class T>
+input_iterator_adaptor<continuation<T(void)>>
+begin(continuation<T()>& c) { return {&c}; }
+
+template<class T>
+input_iterator_adaptor<continuation<T(void)>>
+end(continuation<T()>& c) { return {&c}; }
+
 }
 #include "macros.hpp"
 #endif
