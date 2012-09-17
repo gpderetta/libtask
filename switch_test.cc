@@ -203,6 +203,20 @@ int main() {
             assert(x == i++);
         }
     }
+    {
+
+        std::vector<int> a = { 0,1,2,3,4,5,6,7,8,9,10 };
+
+        auto filtered = callcc([&](continuation<void(int&)> c){
+                    std::remove_copy_if(a.begin(), a.end(), 
+                                        begin(c),
+                                        [](int x) { return x%2 == 1; });
+                    return c;
+            });
+        std::vector<int> result(begin(filtered), end(filtered));
+        std::vector<int> expected_result = { 0,2,4,6,8,10 };
+        assert(result == expected_result);
+    }
 
     {
         typedef continuation<> task;
