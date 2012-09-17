@@ -125,15 +125,6 @@ struct continuation<Result(Args...)> {
         return get(details::tag<result_type>(), pair.parm);
     }
     
-    continuation& operator++()  {
-        return this->operator()();
-    }
-
-    // This is is arguably wrong
-    continuation& operator++(int)  {
-        return this->operator()();
-    }
-
     explicit operator bool() const {
         return !terminated() && has_data();
     }

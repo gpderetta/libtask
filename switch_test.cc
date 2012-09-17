@@ -160,7 +160,7 @@ int main() {
             return std::for_each(v.begin(), v.end(), std::move(c));
         };
     
-        for(auto i = callcc(f) ; i ; i++) {
+        for(auto i = callcc(f) ; i ; i()) {
             int x  = *i;
             assert(v[x] == x);
         }
