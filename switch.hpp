@@ -180,46 +180,13 @@ private:
     switch_pair pair;
 };
 
-struct exit_continuation {
-    exit_continuation(const exit_continuation&) = delete;
-
-    explicit exit_continuation(switch_pair pair) : pair(pair) {}
-
-    exit_continuation(exit_continuation&& rhs) 
-        : pair(rhs.pilfer()) { }
-    
-    template<class Signature>
-    exit_continuation(continuation<Signature>&& rhs) 
-        : pair(rhs.pilfer()) { }
-
-    exit_continuation& operator=(exit_continuation rhs) {
-        pair = rhs.pilfer();
-        return *this;
-    }
-
-    switch_pair pilfer() {
-        switch_pair result = pair;
-        pair = {{0}, 0};
-        return result;
-    }
-
-    bool terminated() const {
-        return !pair.sp;
-    }
-
-    ~exit_continuation() {
-        assert(!pair.sp);
-    }
-private:
-    switch_pair pair;
-};
 
 struct exit_exception 
     : std::exception {
-    explicit exit_exception(exit_continuation exit_to)
-        : exit_to(std::move(exit_to)) {}
+    explicit exit_exception(switch_pair exit_to)
+        : exit_to(exit_to) {}
     
-    exit_continuation exit_to;
+    switch_pair exit_to;
     ~exit_exception() throw() {}
 };
 
@@ -228,8 +195,8 @@ struct abnormal_exit_exception
 
     std::exception_ptr ptr;
 
-    explicit abnormal_exit_exception(exit_continuation exit_to)
-        : exit_exception(std::move(exit_to))
+    explicit abnormal_exit_exception(switch_pair exit_to)
+        : exit_exception(exit_to)
         , ptr(std::current_exception()){}
 
     std::exception_ptr nested_ptr() const { 
@@ -240,7 +207,6 @@ struct abnormal_exit_exception
 };
 
 namespace details { // Internal Trampolines 
-
 template<class F>
 void * get_address(F& f, tag<void>) {
     f();
@@ -261,7 +227,7 @@ switch_pair splice_trampoline(parm_t  p, cont from) {
         r.parm = get_address(f, tag<decltype(f())>());
         return r;
     } catch(...) {
-        throw abnormal_exit_exception(exit_continuation(r));
+        throw abnormal_exit_exception(r);
     }
 }
 
@@ -309,10 +275,10 @@ switch_pair startup_trampoline(parm_t arg, cont sp) {
         switch_pair pair = {sp,0};
         sp = f(Continuation(pair)).pilfer().sp;
     } catch(abnormal_exit_exception& e) {
-        sp = e.exit_to.pilfer().sp;
+        sp = e.exit_to.sp;
         cleanup_args.excp = e.nested_ptr();
     } catch(exit_exception& e) {
-        sp = e.exit_to.pilfer().sp;
+        sp = e.exit_to.sp;
     } 
     assert(sp && "invalid target stack");
     return execute_into(&cleanup_args, sp, &cleanup_trampoline<Deleter>); 
@@ -434,14 +400,14 @@ auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(F()) {
     try {
         f();
     } catch(...) {
-        throw abnormal_exit_exception(std::move(c));
+        throw abnormal_exit_exception(c.pilfer());
     }
 }
  
 template<class Signature>
 void signal_exit(continuation<Signature> c) {
     splicecc(std::move(c), [] (continuation<typename details::reverse_signature<Signature>::type> c) { 
-            throw exit_exception(exit_continuation(std::move(c)));
+            throw exit_exception(c.pilfer());
             return std::move(c);
         });
 }
