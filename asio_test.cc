@@ -60,12 +60,11 @@ thread_type thread(thread_type scheduler,
                              write_error.promise());
 
     while(counter) {
-            if(write_error) {
+        if(write_error) {
             if(std::get<0>(*write_error)) {
                 break;
             }
             write_error.reset();
-
             frob(token, token_size);
             boost::asio::async_write(sink,
                                      boost::asio::buffer(token, token_size),
@@ -80,15 +79,13 @@ thread_type thread(thread_type scheduler,
             }
 
             read_error.reset();
-
             boost::asio::async_read(source,
                                     boost::asio::buffer(token, token_size),
                                     read_error.promise());
         }
  
         assert(!(read_error || write_error));
-        gpd::wait_all(scheduler, read_error, write_error);
-        return scheduler;
+        gpd::wait_any(scheduler, read_error, write_error);
     }
    
     sink.close();
