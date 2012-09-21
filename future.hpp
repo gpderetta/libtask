@@ -134,7 +134,10 @@ void wait_all(task_t& to, Futures&... f) {
                 has_waiter |= (*x != details::set);
                 if(*x != details::set)  *x = &w; 
             }
-            if(!has_waiter) w.task();
+            if(!has_waiter) {  
+                assert(w.task); 
+                w.task();
+            }
             return c ;
         });
 }
@@ -156,6 +159,7 @@ struct promise {
         if(w > details::set && (--w->count <= 0))
         {
             auto task = std::move(w->task);
+            assert(task);
             task();
             assert(!task);
         }       
