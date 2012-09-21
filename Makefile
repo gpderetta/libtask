@@ -15,7 +15,6 @@ PROGRAMS=swarm
 TESTS=match_test\
 	switch_test \
 	mpsc_queue_test  \
-	throw_test   \
 	forwarding_test \
 	future_test \
 
