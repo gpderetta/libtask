@@ -130,7 +130,7 @@ struct continuation<Result(Args...)> {
     }
 
     bool has_data() const {
-        return pair.parm;
+        return has_data(details::tag<result_type>(), pair.parm);
     }
 
     bool terminated() const {
@@ -149,10 +149,20 @@ struct continuation<Result(Args...)> {
 
 private:
     template<class T> 
+    static bool has_data(details::tag<T>, void * parm)  {
+        return parm;
+    }
+
+    static bool has_data(details::tag<void>, void*)  {
+        return true;
+    }
+
+    template<class T> 
     static result_type get(details::tag<T>, void * parm)  {
         typedef std::tuple<T> tuple;
         return std::move(std::get<0>(static_cast<tuple&>(*static_cast<tuple*>(parm))));
     }
+
 
     template<class T> 
     static result_type get(details::tag<T&>, void * parm)  {

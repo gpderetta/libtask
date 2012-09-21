@@ -20,6 +20,15 @@ int main() {
         c();
     }
     {
+        auto c = callcc([](continuation<void()> c) { 
+                c();
+                return c;
+            });
+        assert(c);
+        c();
+    }
+
+    {
         auto c = callcc([](continuation<void(noncopyable)> c) { 
                 c(noncopyable());
                 return c;
