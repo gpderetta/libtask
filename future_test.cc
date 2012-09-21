@@ -39,7 +39,6 @@ int main() {
                 wait_any(task, f1, f2);
                 assert(f1);
                 assert(*f1 == 42);
-
                 return task;
             });
 
@@ -47,6 +46,62 @@ int main() {
         callback2(10);
         callback1(42);
     }
+    {   
+        std::function<void(int)> callback1;
+        std::function<void(int)> callback2;
+
+        auto c = callcc([&](task_t task) {
+                using gpd::wait;
+                future<int> f1;
+                future<int> f2;
+                callback1 = f1.promise();
+                callback2 = f2.promise();
+                assert(!f1);
+                assert(!f2);
+                task();
+                wait_any(task, f1, f2);
+                assert(f2);
+                assert(*f2 == 10);
+                wait_any(task, f1, f2);
+                assert(f1);
+                assert(*f1 == 42);
+                return task;
+            });
+
+        assert(c);
+        callback2(10);
+        callback1(42);
+        c();
+        assert(!c);
+    }
+    {   
+        std::function<void(int)> callback1;
+        std::function<void(int)> callback2;
+
+        auto c = callcc([&](task_t task) {
+                using gpd::wait;
+                future<int> f1;
+                future<int> f2;
+                callback1 = f1.promise();
+                callback2 = f2.promise();
+                assert(!f1);
+                assert(!f2);
+                task();
+                wait_all(task, f1, f2);
+                assert(f2);
+                assert(*f2 == 10);
+                assert(f1);
+                assert(*f1 == 42);
+                return task;
+            });
+
+        assert(c);
+        callback2(10);
+        callback1(42);
+        c();
+        assert(!c);
+    }
+
     {   
         std::function<void(int)> callback1;
         std::function<void(int)> callback2;
