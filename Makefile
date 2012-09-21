@@ -8,6 +8,7 @@ CXXFLAGS ?= $(FEATURE_FLAGS) $(DEVEL_FLAGS)
 LDFLAGS=       `sdl-config --cflags --libs`
 
 BOOST_PO_LIB=boost_program_options
+BOOST_SYS_LIB=boost_system
 
 PROGRAMS=swarm
 
@@ -16,6 +17,7 @@ TESTS=match_test\
 	mpsc_queue_test  \
 	throw_test   \
 	forwarding_test \
+	future_test \
 
 swarm_SOURCES=		\
 	swarm.cc\
@@ -26,6 +28,8 @@ swarm_SOURCES=		\
 swarm_LIBS=	\
 	GL\
 	GLU\
+
+asio_test_LIBS=$(BOOST_SYS_LIB)
 
 
 include Makefile.common
