@@ -17,6 +17,7 @@ TESTS=match_test\
 	mpsc_queue_test  \
 	forwarding_test \
 	future_test \
+	asio_test \
 
 swarm_SOURCES=		\
 	swarm.cc\
