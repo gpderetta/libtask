@@ -37,7 +37,7 @@ struct future
     friend void swap(future& lhs, future& rhs) { std::swap(lhs.pimpl, rhs.pimpl);}
 
 
-    future() : pimpl(new cb{ details::unbound, {} }) {  }
+    future() : pimpl(new cb()) {  }
 
     ~future() 
     {
@@ -63,7 +63,7 @@ struct future
 private:
             
     struct cb  { 
-        
+        cb() : waiter(details::unbound) {}
         details::waiter_t * waiter; union { T value; }; 
         ~cb() { if(waiter == details::set) value.~T(); } 
     };
@@ -137,9 +137,10 @@ struct promise {
         cb->waiter = details::armed;
     }
 
-    void operator()(T value) const {
+    template<class... Args>
+    void operator()(Args&&... args) const {
         assert(cb);
-        new(&cb->value) T{std::move(value)};
+        new(&cb->value) T{std::move(args)...};
         auto w = details::set;
         std::swap(w, cb->waiter);
         if(w > details::set && (--w->count <= 0))

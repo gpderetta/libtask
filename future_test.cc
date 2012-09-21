@@ -42,7 +42,7 @@ int main() {
         assert(!c);
         callback2(10);
     }
- {   
+    {   
         std::function<void(int)> callback1;
         std::function<void(int)> callback2;
 
@@ -65,4 +65,23 @@ int main() {
         callback2(10);
         callback1(11);
     }
+    {
+        std::function<void(int, double)> callback;
+
+        auto c = callcc([&](task_t task) {
+                using gpd::wait;
+                future<std::tuple<int, double> > f;
+                callback = f.promise();
+                assert(!f);
+                wait(task, f);
+                assert(f);
+                assert(std::get<0>(*f) == 10);
+                assert(std::get<1>(*f) == 11);
+                return task;
+            });
+
+        assert(!c);
+        callback(10,11);
+    }
+
 }
