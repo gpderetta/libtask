@@ -58,6 +58,9 @@ struct future
     template<class... Futures>
     friend void wait_all(task_t& to, Futures&... f) ;
 
+    void reset() {
+        pimpl->reset();
+    }
 
     gpd::promise<T> promise();
 private:
@@ -65,7 +68,14 @@ private:
     struct cb  { 
         cb() : waiter(details::unbound) {}
         details::waiter_t * waiter; union { T value; }; 
-        ~cb() { if(waiter == details::set) value.~T(); } 
+        ~cb() { reset(); } 
+
+        void reset() { 
+            assert(waiter == details::set || waiter == details::unbound);
+            if(waiter == details::set) {
+                waiter = details::unbound; value.~T();
+            }
+        }
     };
     std::unique_ptr<cb> pimpl;
 };

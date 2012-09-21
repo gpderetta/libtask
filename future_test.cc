@@ -36,11 +36,16 @@ int main() {
                 wait_any(task, f1, f2);
                 assert(f2);
                 assert(*f2 == 10);
+                wait_any(task, f1, f2);
+                assert(f1);
+                assert(*f1 == 42);
+
                 return task;
             });
 
         assert(!c);
         callback2(10);
+        callback1(42);
     }
     {   
         std::function<void(int)> callback1;
