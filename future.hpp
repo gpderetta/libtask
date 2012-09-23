@@ -1,6 +1,7 @@
 #ifndef GPD_FUTURE_HPP
 #define GPD_FUTURE_HPP
 #include "switch.hpp"
+#include <numeric>
 namespace gpd {
 typedef continuation<void()> task_t;
 
@@ -93,7 +94,8 @@ void wait(task_t& to, future<T>& f) {
             });
 
     }
-    assert(!!f);
+    assert(f.pimpl->waiter == details::set  ||
+           f.pimpl->waiter == details::unbound);
 }
 
 template<class... Futures>
@@ -113,6 +115,13 @@ void wait_any(task_t& to, Futures&... f) {
             if(!has_waiter) w.task();
             return c ;
         });
+    assert(std::accumulate(std::begin(cbs), std::end(cbs),
+                           false,
+                           [](bool x, details::waiter_t** y) { 
+                               return x || (*y == details::set); }));
+    for(auto& x: cbs) {
+        if(*x == &w) *x = details::armed;
+    }
 }
 
 template<class... Futures>
@@ -140,6 +149,10 @@ void wait_all(task_t& to, Futures&... f) {
             }
             return c ;
         });
+    for(auto x: cbs) {
+        assert(*x == details::set  ||
+               *x == details::unbound);
+    }    
 }
 
 
