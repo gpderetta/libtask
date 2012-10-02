@@ -18,6 +18,7 @@ TESTS=match_test\
 	forwarding_test \
 	future_test \
 	asio_test \
+	signature_test \
 
 swarm_SOURCES=		\
 	swarm.cc\

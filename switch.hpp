@@ -5,6 +5,7 @@
 #include "bitcast.hpp"
 #include "switch_base.hpp"
 #include "tuple.hpp"
+#include "signature.hpp"
 #include <exception>
 #include <cstring>
 #include <iterator>
@@ -62,19 +63,13 @@ template<class Ret, class... Args>
 struct reverse_signature<Ret(Args...)> 
     : compose_signature<typename result_pack<Args...>::type, Ret>   {};
 
-template<class Signature> struct signature; 
+template<class Signature> struct make_signature; 
 template<class Ret, class... Args>
-struct signature<Ret(Args...)> 
+struct make_signature<Ret(Args...)> 
     : result_traits<Ret> {
     typedef typename reverse_signature<Ret(Args...)>::type rsignature;
 };
 
-template<class Sig> struct extract_signature;
-
-template<class T, class Ret, class... Args>
-struct extract_signature<Ret(T::*)(Args...)> { typedef Ret type (Args...); };
-template<class T, class Ret, class... Args>
-struct extract_signature<Ret(T::*)(Args...) const> { typedef Ret type (Args...); };
 
 template<class Sig>
 struct parm0;
@@ -93,9 +88,9 @@ class continuation;
 template<class Result, class... Args>
 struct continuation<Result(Args...)> {
     typedef Result signature (Args...);
-    typedef typename details::signature<signature>::rsignature   rsignature;
-    typedef typename details::signature<signature>::result_type  result_type;
-    typedef typename details::signature<signature>::xresult_type xresult_type;
+    typedef typename details::make_signature<signature>::rsignature   rsignature;
+    typedef typename details::make_signature<signature>::result_type  result_type;
+    typedef typename details::make_signature<signature>::xresult_type xresult_type;
 
     continuation(const continuation&) = delete;
 
@@ -337,14 +332,15 @@ continuation<Signature> create_context(F&& f, size_t stack_size = 1024*1024,
 }
 
 template<class F, 
-         class FSig = typename details::extract_signature<decltype(&F::operator())>::type,
+         class FSig = typename signature<F>::type,
          class Parm = typename details::parm0<FSig>::type,
          class RSig = typename Parm::signature,
-         class Sig  = typename details::signature<RSig>::rsignature
+         class Sig  = typename details::make_signature<RSig>::rsignature
          >
 continuation<Sig> callcc(F f) {
     return create_context<Sig>(f);
 }
+
 
 template<class...> class  print;
 
@@ -370,8 +366,10 @@ continuation<IntoSignature> splice(continuation<IntoSignature> c, F f) {
 // returns the new continuation of c.
 template<class IntoSignature, class F>
 continuation<IntoSignature> splicecc(continuation<IntoSignature> c, F f) {
-    typedef typename details::signature<IntoSignature>::rsignature from_signature;
-    typedef typename std::result_of<F(continuation<from_signature>)>::type result_type;
+    typedef typename details::make_signature<IntoSignature>::rsignature
+        from_signature;
+    typedef typename std::result_of<F(continuation<from_signature>)>::type
+        result_type;
     static_assert(std::is_same<result_type, continuation<from_signature> >::value,
                   "result type mismatch");   
 
@@ -385,9 +383,12 @@ continuation<IntoSignature> splicecc(continuation<IntoSignature> c, F f) {
 // current continuation passed to f
 template<class NewIntoSignature, class IntoSignature, class F>
 continuation<NewIntoSignature> splicecc_ex(continuation<IntoSignature> c, F f) {
-    typedef typename details::signature<IntoSignature>::rsignature from_signature;
-    typedef typename details::signature<NewIntoSignature>::rsignature new_from_signature;
-    typedef typename std::result_of<F(continuation<new_from_signature>)>::type result_type;
+    typedef typename details::make_signature<IntoSignature>::rsignature 
+        from_signature;
+    typedef typename details::make_signature<NewIntoSignature>::rsignature 
+        new_from_signature;
+    typedef typename std::result_of<F(continuation<new_from_signature>)>::type
+        result_type;
     static_assert(std::is_same<result_type, continuation<from_signature> >::value,
                   "result type mismatch");   
 
