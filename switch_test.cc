@@ -16,7 +16,7 @@ int main() {
                 c(42);
                 return c;
             });
-        assert(*c == 42);
+        assert(c.get() == 42);
         c();
     }
     {
@@ -33,20 +33,20 @@ int main() {
                 c(noncopyable());
                 return c;
             });
-        noncopyable nc = *c;
+        noncopyable nc = c.get();
         (void)nc;
         c(); 
     }
     {
         auto c = callcc([](continuation<int()> c) {
-                assert(*c() == 42);
+                assert(c().get() == 42);
                 return c;
             });
         c(42);
     }
     {
         auto c = callcc([](continuation<noncopyable()> c) {
-                noncopyable nc = *c();
+                noncopyable nc = c().get();
                 (void)nc;
                 return c;
             });
@@ -80,7 +80,7 @@ int main() {
                 assert(i == 42);
                 //*x;
                 x();
-                *x;
+                x.get();
                 assert(i == 99);
                 return x;
             });
@@ -91,7 +91,7 @@ int main() {
     {
         int i = 0;
         auto c = callcc([&](continuation<int&()> x) {
-                assert(&*x() == &i);
+                assert(&x().get() == &i);
                 return x;
             });
         c(i);
@@ -103,8 +103,8 @@ int main() {
                 assert(i == 42);
                 return x;
             });
-        assert(&*c == &i);
-        *c = 42;
+        assert(&c.get() == &i);
+        c.get() = 42;
         c();
     }
     {
@@ -116,8 +116,8 @@ int main() {
                 assert(i == 42);
                 return x;
             });
-        assert(&*c == ip);
-        *c = 42;
+        assert(&c.get() == ip);
+        c.get() = 42;
         c();
     }
 
@@ -127,7 +127,7 @@ int main() {
                 return x;
             });
         int a, b;
-        std::tie(a, b) = *c;
+        std::tie(a, b) = c.get();
         assert(a==0 && b==1);
         c();
     }
@@ -137,7 +137,7 @@ int main() {
 
             for(int i = 0; i<100 ; ++i) {
                 noncopyable nc;
-                int j = *c(i,"hello", "world", std::move(nc));
+                int j = c(i,"hello", "world", std::move(nc)).get();
                 assert(nc.live == false);
                 assert(i == j); 
             }
@@ -145,18 +145,18 @@ int main() {
         };
         int j = -1;
         for(auto c = callcc(f) ; c ; c(j)) {
-            int i = std::get<0>(*c);
+            int i = std::get<0>(c.get());
             {
                 // XXX  std::get won't move by default because
                 // it does not preserve rvalue references. GCC bug?
-                std::string s  = xget<1>(*c);
-                std::string s2 = xget<2>(*c);               
-                noncopyable n  = xget<3>(*c);
+                std::string s  = xget<1>(c.get());
+                std::string s2 = xget<2>(c.get());               
+                noncopyable n  = xget<3>(c.get());
 
                 assert(n.live == true);
-                assert(std::get<3>(*c).live == false);
+                assert(std::get<3>(c.get()).live == false);
                 assert(s == "hello");
-                assert(std::get<2>(*c).empty());           
+                assert(std::get<2>(c.get()).empty());           
             }
             j++;
             assert(i == j);
@@ -170,7 +170,7 @@ int main() {
         };
     
         for(auto i = callcc(f) ; i ; i()) {
-            int x  = *i;
+            int x  = i.get();
             assert(v[x] == x);
         }
     }
@@ -285,7 +285,7 @@ int main() {
         std::tuple<int, int> ret{42, 42};
         
         auto f = callcc([&](continuation<std::tuple<int,int>()> c){
-                auto i = *c();  
+                auto i = c().get();  
                 assert(i == ret);
                 return c;
             });
@@ -296,7 +296,7 @@ int main() {
         std::tuple<int> ret{42};
         
         auto f = callcc([&](continuation<int()> c){
-                auto i = *c();  
+                auto i = c().get();  
                 assert(i == std::get<0>(ret));
                 return c;
             });
@@ -330,11 +330,11 @@ int main() {
         // an experiment in continuation signature mutation
         continuation<float()> c2;
         auto f1 = callcc([&](continuation<int()> c1){
-                int i = *c1(); 
+                int i = c1().get(); 
                 assert(i == 42);
                 c1(); // c1 no longer valid after this call
                 assert(!c1);
-                float f = *c2();
+                float f = c2().get();
                 assert(f == 42);
                 return std::move(c2);
             });
@@ -350,13 +350,13 @@ int main() {
     {
         // an experiment in continuation signature mutation, take 2
         auto f1 = callcc([&](continuation<int()> c1){
-                int i = *c1(); 
+                int i = c1().get(); 
                 assert(i == 42);
                 try {
                     c1();
                 } catch(continuation<float()>&& c2) {
                     assert(!c1);
-                    float f = *c2();
+                    float f = c2().get();
                     assert(f == 42);
                     return std::move(c2);
                 }

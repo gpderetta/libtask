@@ -120,7 +120,7 @@ struct continuation<Result(Args...)> {
         return *this; 
     }
     
-    result_type operator*() const {
+    result_type get() const {
         assert(has_data());
         return get(details::tag<result_type>(), pair.parm);
     }
@@ -436,10 +436,10 @@ struct input_iterator_adaptor  {
     Continuation* c;
 
     typedef std::input_iterator_tag iterator_category;
-    typedef typename std::remove_reference<decltype(*(*c)())>::type value_type;
+    typedef typename std::remove_reference<decltype(c->get())>::type value_type;
     typedef size_t difference_type;
     typedef value_type* pointer;
-    typedef decltype(*(*c)()) reference;
+    typedef decltype(c->get()) reference;
 
     input_iterator_adaptor& operator=(input_iterator_adaptor const&x) {
         c = x.c;
@@ -449,8 +449,7 @@ struct input_iterator_adaptor  {
         return *this;
     }
     reference operator*() { 
-        return **c;
-
+        return c->get();
     }
 
     bool operator==(input_iterator_adaptor const&) const {
