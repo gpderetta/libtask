@@ -9,6 +9,13 @@ struct noncopyable {
     bool live;
 };
 
+struct polymorphic { 
+    template<class C>
+    C operator() (C c) const { return c; }
+};
+
+gpd::continuation<void()> monomorphic(gpd::continuation<void()> c) { return c; }
+
 int main() {
     using namespace gpd;
     {
@@ -19,6 +26,33 @@ int main() {
         assert(c.get() == 42);
         c();
     }
+    {
+        auto c = callcc([](continuation<void()> c) { 
+                return c;
+            });
+        assert(!c);
+    }
+    {
+        auto c = callcc(monomorphic);
+        assert(!c);
+    }
+    {
+        auto c = callcc<void()>(monomorphic);
+        assert(!c);
+    }
+    {
+        auto c = callcc<void()>(polymorphic{});
+        assert(!c);
+    }
+    {
+        auto c = callcc<int()>([](continuation<void(int)> c) { 
+                c(42);
+                return c;
+            });
+        assert(c.get() == 42);
+        c();
+    }
+
     {
         auto c = callcc([](continuation<void()> c) { 
                 c();
@@ -309,7 +343,7 @@ int main() {
                 return c;
             });
             
-        splicecc(std::move(f), [&] (continuation<void()> x)   { return x; } );
+        callcc(std::move(f), [&] (continuation<void()> x)   { return x; } );
     }
     {
         auto f = callcc([&](continuation<int()> c){
@@ -317,7 +351,7 @@ int main() {
                 return c;
             });
             
-        splicecc(std::move(f), [&] (continuation<int()> x)   { return x; } );
+        callcc(std::move(f), [&] (continuation<int()> x)   { return x; } );
     }
     {
         auto f = callcc([&](continuation<void()> c){
@@ -341,7 +375,7 @@ int main() {
         
         f1(42);
         assert(f1);
-        auto f2 = splicecc_ex<void(float)>
+        auto f2 = callcc<void(float)>
             (std::move(f1), [&] (continuation<float()> x)   
              { c2 = std::move(x);
                return continuation<int()>(); });
@@ -365,12 +399,9 @@ int main() {
         
         f1(42);
         assert(f1);
-        auto f2 = splicecc_ex<void(float)>
+        auto f2 = callcc<void(float)>
             (std::move(f1), [&] (continuation<float()> x) -> continuation<int()>
              { throw std::move(x); });
         f2(42.);
     }
-
-
-
 }

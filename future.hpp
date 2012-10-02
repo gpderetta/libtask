@@ -85,7 +85,7 @@ template<class T>
 void wait(task_t& to, future<T>& f) {
     if(!f) {
         details::waiter_t w { 1, {}};
-        to = splicecc
+        to = callcc
             (std::move(to),
              [&](task_t c){    
                 w.task = std::move(c);
@@ -103,7 +103,7 @@ void wait_any(task_t& to, Futures&... f) {
     // GCC will barf in lambda capture if we omit the size here
     details::waiter_t** cbs[sizeof...(f)] = { &f.pimpl.get()->waiter... }; 
     details::waiter_t w { 1, {} };
-    to = splicecc
+    to = callcc
         (std::move(to),
          [&](task_t c){  
             w.task = std::move(c);
@@ -134,7 +134,7 @@ void wait_all(task_t& to, Futures&... f) {
     }
     details::waiter_t w { count, {} };
 
-    to = splicecc
+    to = callcc
         (std::move(to),
          [&](task_t c){  
             w.task = std::move(c);

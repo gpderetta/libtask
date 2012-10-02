@@ -293,6 +293,48 @@ run_startup_trampoline_into(cont cs, F && f, Deleter d) {
     return execute_into(&args, cs, &startup_trampoline<Continuation, F, Deleter>);
 }
 
+
+template<class Signature, 
+         class F,
+         class StackAlloc> 
+continuation<Signature> create_context(F&& f, size_t stack_size, 
+                                       StackAlloc alloc) 
+{
+    void * stackp = alloc.allocate(stack_size);
+    cont cs { stack_bottom(stackp, stack_size) };
+        
+    auto deleter =  [=] { alloc.deallocate(stackp); };
+
+    typedef typename continuation<Signature>::rsignature rsignature;
+    return continuation<Signature>
+    { details::run_startup_trampoline_into<continuation<rsignature> >
+            (cs, std::forward<F>(f), deleter) };
+}
+
+template<class NewIntoSignature, class IntoSignature, class F>
+continuation<NewIntoSignature> splicecc(continuation<IntoSignature> c, F f) {
+    typedef typename make_signature<IntoSignature>::rsignature 
+        from_signature;
+    typedef typename make_signature<NewIntoSignature>::rsignature 
+        new_from_signature;
+    typedef typename std::result_of<F(continuation<new_from_signature>)>::type
+        result_type;
+    static_assert(std::is_same<result_type, continuation<from_signature> >::value,
+                  "result type mismatch");   
+
+    return continuation<NewIntoSignature>
+        (execute_into(&f, c.pilfer().sp, 
+                      &splicecc_trampoline<new_from_signature, F>));
+}
+
+template<class F, 
+         class FSig = typename signature<F>::type,
+         class Parm = typename parm0<FSig>::type,
+         class RSig = typename Parm::signature,
+         class Sig  = typename make_signature<RSig>::rsignature
+         > 
+struct deduce_signature { typedef Sig type; };
+
 }
 
 struct default_stack_allocator {
@@ -314,35 +356,42 @@ struct default_stack_allocator {
 
 ///// Public API
 
-template<class Signature, 
-         class F,
-         class StackAlloc = default_stack_allocator> 
-continuation<Signature> create_context(F&& f, size_t stack_size = 1024*1024, 
-                                       StackAlloc alloc = StackAlloc()) 
-{
-    void * stackp = alloc.allocate(stack_size);
-    cont cs { stack_bottom(stackp, stack_size) };
-        
-    auto deleter =  [=] { alloc.deallocate(stackp); };
-
-    typedef typename continuation<Signature>::rsignature rsignature;
-    return continuation<Signature>
-    { details::run_startup_trampoline_into<continuation<rsignature> >
-            (cs, std::forward<F>(f), deleter) };
-}
-
 template<class F, 
-         class FSig = typename signature<F>::type,
-         class Parm = typename details::parm0<FSig>::type,
-         class RSig = typename Parm::signature,
-         class Sig  = typename details::make_signature<RSig>::rsignature
-         >
-continuation<Sig> callcc(F f) {
-    return create_context<Sig>(f);
+         class Sig = typename details::deduce_signature<F>::type,
+         class StackAlloc = default_stack_allocator>
+continuation<Sig> callcc(F f, size_t stack_size = 1024*1024, 
+                         StackAlloc alloc = StackAlloc()) {
+    return details::create_context<Sig>(f, stack_size, alloc);
+}
+
+template<class Sig, class F, class StackAlloc = default_stack_allocator>
+continuation<Sig> callcc(F f,  size_t stack_size = 1024*1024, 
+                         StackAlloc alloc = StackAlloc()) {
+    return details::create_context<Sig>(f, stack_size, alloc);
 }
 
 
-template<class...> class  print;
+// execute f on existing continuation c, passing to f the current
+// continuation. When f returns, c is resumed; F must return a continuation to c.
+//
+// returns the new continuation of c.
+//
+// Note that a new signature can be specified for the new continuation
+// of c and consequently for the continuation passed to f
+template<class NewIntoSignature,
+         class IntoSignature, 
+         class F>
+continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
+    return details::splicecc<NewIntoSignature>(std::move(c), f);
+}
+
+template<class IntoSignature, 
+         class F, 
+         class NewIntoSignature = typename details::deduce_signature<F>::type>
+continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
+    return details::splicecc<NewIntoSignature>(std::move(c), f);
+}
+
 
 // splice function f on top of continuation c and call it;
 // the result type of f must be compatible with the continuation c
@@ -360,43 +409,6 @@ continuation<IntoSignature> splice(continuation<IntoSignature> c, F f) {
         (execute_into(&f, c.pilfer().sp, &details::splice_trampoline<F>));
 }
 
-// splice f on top of continuation c, passing to f the current
-// continuation. F must return a continuation to c.
-//
-// returns the new continuation of c.
-template<class IntoSignature, class F>
-continuation<IntoSignature> splicecc(continuation<IntoSignature> c, F f) {
-    typedef typename details::make_signature<IntoSignature>::rsignature
-        from_signature;
-    typedef typename std::result_of<F(continuation<from_signature>)>::type
-        result_type;
-    static_assert(std::is_same<result_type, continuation<from_signature> >::value,
-                  "result type mismatch");   
-
-    return continuation<IntoSignature>
-        (execute_into(&f, c.pilfer().sp, 
-                      &details::splicecc_trampoline<from_signature, F>));
-}
-
-// Same as splice_cc, but allows the specification of a different
-// signature for the new continuation of c and consequently for the
-// current continuation passed to f
-template<class NewIntoSignature, class IntoSignature, class F>
-continuation<NewIntoSignature> splicecc_ex(continuation<IntoSignature> c, F f) {
-    typedef typename details::make_signature<IntoSignature>::rsignature 
-        from_signature;
-    typedef typename details::make_signature<NewIntoSignature>::rsignature 
-        new_from_signature;
-    typedef typename std::result_of<F(continuation<new_from_signature>)>::type
-        result_type;
-    static_assert(std::is_same<result_type, continuation<from_signature> >::value,
-                  "result type mismatch");   
-
-    return continuation<NewIntoSignature>
-        (execute_into(&f, c.pilfer().sp, 
-                      &details::splicecc_trampoline<new_from_signature, F>));
-}
-
 template<class F, class Continuation>
 auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(F()) {
     try {
@@ -408,7 +420,7 @@ auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(F()) {
  
 template<class Signature>
 void signal_exit(continuation<Signature> c) {
-    splicecc(std::move(c), [] (continuation<typename details::reverse_signature<Signature>::type> c) { 
+    callcc(std::move(c), [] (continuation<typename details::reverse_signature<Signature>::type> c) { 
             throw exit_exception(c.pilfer());
             return std::move(c);
         });

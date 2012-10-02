@@ -50,6 +50,7 @@ struct uncallable {};
 struct polymorphic { 
     template<class... Args> void operator()(Args...) { abort(); } 
 };
+
 int main() {
     check<void()>(dummy);
     check<void(int)>(dummy1);
