@@ -52,7 +52,6 @@ int main() {
         assert(c.get() == 42);
         c();
     }
-
     {
         auto c = callcc([](continuation<void()> c) { 
                 c();
@@ -306,7 +305,7 @@ int main() {
                     return c;
                 });
             try {
-                splice(std::move(f), [] { throw 42; } );
+                callcc<void()>(std::move(f), [] { throw 42; } );
             } catch(int i) {
                 assert(i == 42);
                 caught++;
@@ -314,28 +313,6 @@ int main() {
         }
 
         assert(caught == 2);
-    }
-    {
-        std::tuple<int, int> ret{42, 42};
-        
-        auto f = callcc([&](continuation<std::tuple<int,int>()> c){
-                auto i = c().get();  
-                assert(i == ret);
-                return c;
-            });
-            
-        splice(std::move(f), [&] () -> decltype(ret)&  { return ret; } );
-    }
-    {
-        std::tuple<int> ret{42};
-        
-        auto f = callcc([&](continuation<int()> c){
-                auto i = c().get();  
-                assert(i == std::get<0>(ret));
-                return c;
-            });
-            
-        splice(std::move(f), [&] () -> decltype(ret)&  { return ret; } );
     }
     {
         auto f = callcc([&](continuation<void()> c){
@@ -400,8 +377,80 @@ int main() {
         f1(42);
         assert(f1);
         auto f2 = callcc<void(float)>
-            (std::move(f1), [&] (continuation<float()> x) -> continuation<int()>
+            (std::move(f1), [&] (continuation<float()> x) 
              { throw std::move(x); });
         f2(42.);
     }
+    {
+        bool caught = false;
+        try {
+            auto c = callcc([](continuation<void()> c)  {
+                    with_escape_continuation([] { throw 10; }, std::move(c));
+                    assert(false);
+                    return c;
+                });
+        } catch(int x)
+        {
+            assert(x == 10);
+            caught = true;
+        }
+        assert(caught);
+    }
+    {
+        bool caught = false;
+        try {
+            auto c = callcc([](continuation<void()> c)  {
+                    c();
+                    with_escape_continuation([] { throw 10; }, std::move(c));
+                    assert(false);
+                    return c;
+                });
+            c();
+        } catch(int x)
+        {
+            assert(x == 10);
+            caught = true;
+        }
+        assert(caught);
+    }
+    {
+        auto c = callcc([](continuation<void()> c) {
+                exit_to(std::move(c));
+            });
+    }
+    {
+        auto c = callcc([](continuation<void()> c) {
+                c();
+            });
+        callcc(std::move(c), [](continuation<void()> c) { 
+                exit_to(std::move(c));
+            });
+    }
+    {
+        bool caught = false;
+        try {
+            auto c = callcc([](continuation<void()> c) {
+                    with_escape_continuation
+                    ([]{ throw 10; }, std::move(c));
+                });
+        } catch(int x) {
+            assert(x == 10);
+            caught = true;
+        }
+        assert(caught);
+    }
+    {
+        bool caught = false;
+        try {
+            auto c = callcc<void()>([] {
+                    throw 10;
+                });
+        } catch(int x) {
+            assert(x == 10);
+            caught = true;
+        }
+        assert(caught);
+    }
+
+
 }

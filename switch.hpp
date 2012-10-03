@@ -11,6 +11,7 @@
 #include <iterator>
 #include <stdlib.h>
 #include <memory>
+#include <type_traits>
 #include "macros.hpp"
 #include <iterator>
 namespace gpd {
@@ -203,28 +204,84 @@ struct abnormal_exit_exception
 };
 
 namespace details { // Internal Trampolines 
-template<class F>
-void * get_address(F& f, tag<void>) {
-    f();
-    return 0;
+
+template<class StackAlloc>
+struct cleanup_trampoline_args {
+    StackAlloc allocator; 
+    void * stackp;
+    std::exception_ptr excp;
+
+    void operator()() { allocator.deallocate(stackp); }
+    cleanup_trampoline_args(cleanup_trampoline_args&&) = default;
+};
+
+template<class StackAlloc>
+switch_pair cleanup_trampoline(parm_t arg, cont)  {
+    auto argsp = static_cast<cleanup_trampoline_args<StackAlloc> *>(arg);
+    auto g = guard
+        ([&]{ 
+            auto alloc = std::move(argsp->allocator); // Must not throw, othwise we leak memory
+            void * stackp = argsp->stackp;
+            argsp->~cleanup_trampoline_args<StackAlloc>();
+            alloc.deallocate(stackp);
+        });
+    if (argsp->excp) std::rethrow_exception(argsp->excp);
+    return switch_pair{{0}, 0};
 }
 
-template<class F, class T>
-void * get_address(F& f, tag<T>) {
-    return &f();
+template<class F, class StackAlloc>
+struct startup_trampoline_args { // POD
+    startup_trampoline_args(startup_trampoline_args&) = default;
+    F functor;
+    StackAlloc allocator;
+    void * stackp;
+    startup_trampoline_args(startup_trampoline_args&&) = default;
+};
+
+template<class F, 
+         class Continuation>
+auto do_call(F& f, Continuation c) ->
+    typename std::enable_if<std::is_void<decltype(f(std::move(c)))>::value,  
+                            switch_pair>::type { 
+    f(std::move(c)); 
+    assert("void function is not expected to return," 
+           "throw exit_exception instead"); 
+    abort();
+ }
+
+template<class F, 
+         class Continuation>
+auto do_call(F& f, Continuation c) ->
+    typename std::enable_if<!std::is_void<decltype(f(std::move(c)))>::value,  
+                            switch_pair>::type { 
+    return f(std::move(c)).pilfer();
 }
 
-template<class F>
-switch_pair splice_trampoline(parm_t  p, cont from) {   
-    typename std::remove_reference<F>::type f
-        = std::move(*static_cast<F*>(p));
-    switch_pair r{from, 0};
+template<class F, 
+         class Continuation>
+auto do_call(F& f, Continuation c) ->
+    typename sfinae<decltype(f(), c()), switch_pair>::type { 
+    with_escape_continuation([&] { f(); }, std::move(c));
+    return c.pilfer();
+ }
+
+template<class Continuation, class F, class StackAlloc>
+switch_pair startup_trampoline(parm_t arg, cont sp) {
+    auto argsp = static_cast<startup_trampoline_args<F, StackAlloc>*>(arg);
+    cleanup_trampoline_args<StackAlloc> cleanup_args
+    { std::move(argsp->allocator), argsp->stackp, 0 };
     try {
-        r.parm = get_address(f, tag<decltype(f())>());
-        return r;
-    } catch(...) {
-        throw abnormal_exit_exception(r);
-    }
+        auto f(std::move(argsp->functor)); 
+        switch_pair pair = {sp,0};
+        sp = do_call(f, Continuation(pair)).sp;
+    } catch(abnormal_exit_exception& e) {
+        sp = e.exit_to.sp;
+        cleanup_args.excp = e.nested_ptr();
+    } catch(exit_exception& e) {
+        sp = e.exit_to.sp;
+    } 
+    assert(sp && "invalid target stack");
+    return execute_into(&cleanup_args, sp, &cleanup_trampoline<StackAlloc>); 
 }
 
 template<class FromSignature, class F>
@@ -233,99 +290,47 @@ switch_pair splicecc_trampoline(parm_t  p, cont from) {
     typename std::remove_reference<F>::type f
         = std::move(*static_cast<F*>(p));
     switch_pair r {from, 0};
-    return f(from_cont(r)).pilfer();
+    return do_call(f, from_cont(r));
 }
 
-template<class Deleter>
-struct cleanup_trampoline_args {
-    Deleter deleter; // Remove if is_empty<Deleter>
-    std::exception_ptr excp;
-};
-
-template<class Deleter>
-switch_pair cleanup_trampoline(parm_t arg, cont)  {
-    auto argsp = static_cast<cleanup_trampoline_args<Deleter> *>(arg);
-    auto g = guard
-        ([&]{ 
-            Deleter d(std::move(argsp->deleter)); // Must not throw, othwise we leak memory
-            argsp->~cleanup_trampoline_args<Deleter>();
-            d();
-        });
-    if (argsp->excp) std::rethrow_exception(argsp->excp);
-    return switch_pair{{0}, 0};
-}
-
-template<class F, class Deleter>
-struct startup_trampoline_args { // POD
-    startup_trampoline_args(startup_trampoline_args const&) = default;
-    F functor;
-    cleanup_trampoline_args<Deleter> cleanup_args;
-};
-
-template<class Continuation, class F, class Deleter>
-switch_pair startup_trampoline(parm_t arg, cont sp) {
-    auto argsp = static_cast<startup_trampoline_args<F, Deleter>*>(arg);
-    auto cleanup_args = std::move(argsp->cleanup_args);
-    try {
-        typename std::remove_reference<F>::type f(std::forward<F>(argsp->functor)); 
-        switch_pair pair = {sp,0};
-        sp = f(Continuation(pair)).pilfer().sp;
-    } catch(abnormal_exit_exception& e) {
-        sp = e.exit_to.sp;
-        cleanup_args.excp = e.nested_ptr();
-    } catch(exit_exception& e) {
-        sp = e.exit_to.sp;
-    } 
-    assert(sp && "invalid target stack");
-    return execute_into(&cleanup_args, sp, &cleanup_trampoline<Deleter>); 
-}
  
 // Helpers
 
-// Deleter must be nothrow move constructible 
-template<class Continuation, class F, class Deleter>
-switch_pair
-run_startup_trampoline_into(cont cs, F && f, Deleter d) {
-    startup_trampoline_args<F, Deleter> args{ 
-        std::forward<F>(f),
-        { std::move(d), 0 }
-    };
-    return execute_into(&args, cs, &startup_trampoline<Continuation, F, Deleter>);
-}
+template<class Signature, class F>
+void static_check_fn(F&) { 
+    typedef typename std::result_of<F(continuation<Signature>)>::type
+        result_type;
 
+    static_assert(std::is_same<result_type, continuation<Signature> >::value 
+                  || std::is_same<result_type, void>::value,
+                  "'f' must return the same continuation type as its argument" 
+                  "or void");
+};
+    
 
 template<class Signature, 
          class F,
          class StackAlloc> 
-continuation<Signature> create_context(F&& f, size_t stack_size, 
+continuation<Signature> create_context(F f, size_t stack_size, 
                                        StackAlloc alloc) 
 {
     void * stackp = alloc.allocate(stack_size);
     cont cs { stack_bottom(stackp, stack_size) };
 
-    struct deleter_closure {
-        StackAlloc allocator;
-        void * stackp;
-        void operator()() { allocator.deallocate(stackp); }
-        deleter_closure(deleter_closure&&) = default;
-    }  deleter{ std::move(alloc), stackp };
-
     typedef typename continuation<Signature>::rsignature rsignature;
+
+    startup_trampoline_args<F, StackAlloc> args{ 
+        std::move(f), std::move(alloc), stackp
+    };
     return continuation<Signature>
-    { details::run_startup_trampoline_into<continuation<rsignature> >
-            (cs, std::forward<F>(f), std::move(deleter)) };
+        (execute_into(&args, cs, &startup_trampoline<continuation<rsignature>, 
+                                                    F, StackAlloc>));
 }
 
 template<class NewIntoSignature, class IntoSignature, class F>
 continuation<NewIntoSignature> splicecc(continuation<IntoSignature> c, F f) {
-    typedef typename make_signature<IntoSignature>::rsignature 
-        from_signature;
     typedef typename make_signature<NewIntoSignature>::rsignature 
         new_from_signature;
-    typedef typename std::result_of<F(continuation<new_from_signature>)>::type
-        result_type;
-    static_assert(std::is_same<result_type, continuation<from_signature> >::value,
-                  "'f' must return the same continuation type as its argument");
 
     return continuation<NewIntoSignature>
         (execute_into(&f, c.pilfer().sp, 
@@ -427,25 +432,8 @@ continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
     return details::splicecc<NewIntoSignature>(std::move(c), f);
 }
 
-
-// splice function f on top of continuation c and call it;
-// the result type of f must be compatible with the continuation c
-//
-// Returns the new continuation of c.
-template<class IntoSignature, class F>
-continuation<IntoSignature> splice(continuation<IntoSignature> c, F f) {
-    typedef continuation<IntoSignature> into_cont;
-    typedef continuation<typename into_cont::rsignature> from_cont;
-    typedef decltype(f()) result_type;
-
-    static_assert(std::is_same<result_type, typename from_cont::xresult_type>::value,
-                  "result type mismatch");   
-    return continuation<IntoSignature>
-        (execute_into(&f, c.pilfer().sp, &details::splice_trampoline<F>));
-}
-
 template<class F, class Continuation>
-auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(f()) {
+auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
     try {
         return f();
     } catch(...) {
@@ -453,12 +441,17 @@ auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(f()) {
         throw abnormal_exit_exception(c.pilfer());
     }
 }
+
+
+template<class Signature>
+void exit_to(continuation<Signature> c) {
+    throw exit_exception(c.pilfer());
+}
  
 template<class Signature>
 void signal_exit(continuation<Signature> c) {
-    callcc(std::move(c), [] (continuation<typename details::reverse_signature<Signature>::type> c) { 
-            throw exit_exception(c.pilfer());
-            return c;
+    callcc(std::move(c), [] (continuation<void()> c) { 
+            exit_to(std::move(c));
         });
 }
 
