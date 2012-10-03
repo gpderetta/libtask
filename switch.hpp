@@ -285,7 +285,7 @@ switch_pair startup_trampoline(parm_t arg, cont sp) {
 }
 
 template<class FromSignature, class F>
-switch_pair splicecc_trampoline(parm_t  p, cont from) {
+switch_pair interrupt_trampoline(parm_t  p, cont from) {
     typedef continuation<FromSignature> from_cont;
     typename std::remove_reference<F>::type f
         = std::move(*static_cast<F*>(p));
@@ -311,8 +311,8 @@ void static_check_fn(F&) {
 template<class Signature, 
          class F,
          class StackAlloc> 
-continuation<Signature> create_context(F f, size_t stack_size, 
-                                       StackAlloc alloc) 
+continuation<Signature> create_continuation(F f, size_t stack_size, 
+                                            StackAlloc alloc) 
 {
     void * stackp = alloc.allocate(stack_size);
     cont cs { stack_bottom(stackp, stack_size) };
@@ -328,13 +328,14 @@ continuation<Signature> create_context(F f, size_t stack_size,
 }
 
 template<class NewIntoSignature, class IntoSignature, class F>
-continuation<NewIntoSignature> splicecc(continuation<IntoSignature> c, F f) {
+continuation<NewIntoSignature> 
+interrupt_continuation(continuation<IntoSignature> c, F f) {
     typedef typename make_signature<NewIntoSignature>::rsignature 
         new_from_signature;
 
     return continuation<NewIntoSignature>
         (execute_into(&f, c.pilfer().sp, 
-                      &splicecc_trampoline<new_from_signature, F>));
+                      &interrupt_trampoline<new_from_signature, F>));
 }
 
 template<class F, 
@@ -401,13 +402,13 @@ template<class F,
          class StackAlloc = default_stack_allocator>
 continuation<Sig> callcc(F f, size_t stack_size = 1024*1024, 
                          StackAlloc alloc = StackAlloc()) {
-    return details::create_context<Sig>(f, stack_size, std::move(alloc));
+    return details::create_continuation<Sig>(f, stack_size, std::move(alloc));
 }
 
 template<class Sig, class F, class StackAlloc = default_stack_allocator>
 continuation<Sig> callcc(F f,  size_t stack_size = 1024*1024, 
                          StackAlloc alloc = StackAlloc()) {
-    return details::create_context<Sig>(f, stack_size, std::move(alloc));
+    return details::create_continuation<Sig>(f, stack_size, std::move(alloc));
 }
 
 
@@ -422,14 +423,14 @@ template<class NewIntoSignature,
          class IntoSignature, 
          class F>
 continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
-    return details::splicecc<NewIntoSignature>(std::move(c), f);
+    return details::interrupt_continuation<NewIntoSignature>(std::move(c), f);
 }
 
 template<class IntoSignature, 
          class F, 
          class NewIntoSignature = typename details::deduce_signature<F>::type>
 continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
-    return details::splicecc<NewIntoSignature>(std::move(c), f);
+    return details::interrupt_continuation<NewIntoSignature>(std::move(c), f);
 }
 
 template<class F, class Continuation>
@@ -441,7 +442,6 @@ auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
         throw abnormal_exit_exception(c.pilfer());
     }
 }
-
 
 template<class Signature>
 void exit_to(continuation<Signature> c) {
