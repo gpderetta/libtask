@@ -320,7 +320,7 @@ continuation<NewIntoSignature> splicecc(continuation<IntoSignature> c, F f) {
     typedef typename std::result_of<F(continuation<new_from_signature>)>::type
         result_type;
     static_assert(std::is_same<result_type, continuation<from_signature> >::value,
-                  "result type mismatch");   
+                  "'f' must return the same continuation type as its argument");
 
     return continuation<NewIntoSignature>
         (execute_into(&f, c.pilfer().sp, 
@@ -410,10 +410,11 @@ continuation<IntoSignature> splice(continuation<IntoSignature> c, F f) {
 }
 
 template<class F, class Continuation>
-auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(F()) {
+auto with_escape_continuation(F &&f, Continuation&& c) -> decltype(f()) {
     try {
-        f();
+        return f();
     } catch(...) {
+        assert(c);
         throw abnormal_exit_exception(c.pilfer());
     }
 }
@@ -422,7 +423,7 @@ template<class Signature>
 void signal_exit(continuation<Signature> c) {
     callcc(std::move(c), [] (continuation<typename details::reverse_signature<Signature>::type> c) { 
             throw exit_exception(c.pilfer());
-            return std::move(c);
+            return c;
         });
 }
 
