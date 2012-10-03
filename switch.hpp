@@ -302,13 +302,18 @@ continuation<Signature> create_context(F&& f, size_t stack_size,
 {
     void * stackp = alloc.allocate(stack_size);
     cont cs { stack_bottom(stackp, stack_size) };
-        
-    auto deleter =  [=] { alloc.deallocate(stackp); };
+
+    struct deleter_closure {
+        StackAlloc allocator;
+        void * stackp;
+        void operator()() { allocator.deallocate(stackp); }
+        deleter_closure(deleter_closure&&) = default;
+    }  deleter{ std::move(alloc), stackp };
 
     typedef typename continuation<Signature>::rsignature rsignature;
     return continuation<Signature>
     { details::run_startup_trampoline_into<continuation<rsignature> >
-            (cs, std::forward<F>(f), deleter) };
+            (cs, std::forward<F>(f), std::move(deleter)) };
 }
 
 template<class NewIntoSignature, class IntoSignature, class F>
@@ -337,7 +342,7 @@ struct deduce_signature { typedef Sig type; };
 
 }
 
-struct default_stack_allocator {
+struct static_stack_allocator {
     static const size_t alignment = 16;
 
     static void * allocate(size_t size) {
@@ -352,8 +357,38 @@ struct default_stack_allocator {
     static void deallocate(void * ptr) throw() {
         free(ptr);
     }
+
 };
 
+struct debug_stack_allocator {
+    static const size_t alignment = 16;
+
+    void * allocate(size_t size) {
+        void * ret = static_stack_allocator::allocate(size);
+        count++;
+        return ret;
+    }
+
+    void deallocate(void * ptr) throw() {
+        count--;
+        return static_stack_allocator::deallocate(ptr);
+    }
+
+    debug_stack_allocator(debug_stack_allocator&) = delete;
+    
+    int count;
+    debug_stack_allocator() : count(0) {}
+    debug_stack_allocator(debug_stack_allocator&& rhs) : count(rhs.count) {
+        rhs.count = 0;
+    }
+    ~debug_stack_allocator() { assert(count == 0); }
+};
+
+#ifdef NDEBUG
+typedef static_stack_allocator default_stack_allocator;
+#else
+typedef debug_stack_allocator default_stack_allocator;
+#endif
 ///// Public API
 
 template<class F, 
@@ -361,13 +396,13 @@ template<class F,
          class StackAlloc = default_stack_allocator>
 continuation<Sig> callcc(F f, size_t stack_size = 1024*1024, 
                          StackAlloc alloc = StackAlloc()) {
-    return details::create_context<Sig>(f, stack_size, alloc);
+    return details::create_context<Sig>(f, stack_size, std::move(alloc));
 }
 
 template<class Sig, class F, class StackAlloc = default_stack_allocator>
 continuation<Sig> callcc(F f,  size_t stack_size = 1024*1024, 
                          StackAlloc alloc = StackAlloc()) {
-    return details::create_context<Sig>(f, stack_size, alloc);
+    return details::create_context<Sig>(f, stack_size, std::move(alloc));
 }
 
 
