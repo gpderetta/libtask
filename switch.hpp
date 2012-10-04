@@ -396,21 +396,21 @@ typedef static_stack_allocator default_stack_allocator;
 typedef debug_stack_allocator default_stack_allocator;
 #endif
 ///// Public API
-
 template<class F, 
-         class Sig = typename details::deduce_signature<F>::type,
-         class StackAlloc = default_stack_allocator>
+         class StackAlloc = default_stack_allocator,
+         class Sig = typename details::deduce_signature<F>::type>
 continuation<Sig> callcc(F f, size_t stack_size = 1024*1024, 
                          StackAlloc alloc = StackAlloc()) {
     return details::create_continuation<Sig>(f, stack_size, std::move(alloc));
 }
 
-template<class Sig, class F, class StackAlloc = default_stack_allocator>
+template<class Sig, 
+         class F, 
+         class StackAlloc = default_stack_allocator>
 continuation<Sig> callcc(F f,  size_t stack_size = 1024*1024, 
                          StackAlloc alloc = StackAlloc()) {
     return details::create_continuation<Sig>(f, stack_size, std::move(alloc));
 }
-
 
 // execute f on existing continuation c, passing to f the current
 // continuation. When f returns, c is resumed; F must return a continuation to c.
