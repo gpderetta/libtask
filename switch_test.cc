@@ -451,6 +451,20 @@ int main() {
         }
         assert(caught);
     }
-
+    {
+        auto c1 = callcc([](continuation<void(int)> c) {
+                for(int i = 0; i < 10; ++i)
+                    c(i);
+                return c;
+            });
+        auto c2 = callcc([&](continuation<void(double)> c) {
+                for(auto x: c1) {
+                    c(x*2);
+                }
+                return c;
+            });
+        std::vector<double> ret = { 0, 2, 4, 6, 8, 10, 12, 14, 16, 18 };
+        assert(std::equal(begin(c2), end(c2), ret.begin()));
+    }
 
 }
