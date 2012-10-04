@@ -399,18 +399,18 @@ typedef debug_stack_allocator default_stack_allocator;
 template<class F, 
          class StackAlloc = default_stack_allocator,
          class Sig = typename details::deduce_signature<F>::type>
-continuation<Sig> callcc(F f, size_t stack_size = 1024*1024, 
-                         StackAlloc alloc = StackAlloc()) {
-    return details::create_continuation<Sig>(f, stack_size, std::move(alloc));
-}
+auto callcc(F f, size_t stack_size = 1024*1024, 
+            StackAlloc alloc = StackAlloc()) as 
+                (details::create_continuation<Sig>
+                 (f, stack_size, std::move(alloc)) );
 
 template<class Sig, 
          class F, 
          class StackAlloc = default_stack_allocator>
-continuation<Sig> callcc(F f,  size_t stack_size = 1024*1024, 
-                         StackAlloc alloc = StackAlloc()) {
-    return details::create_continuation<Sig>(f, stack_size, std::move(alloc));
-}
+auto callcc(F f,  size_t stack_size = 1024*1024, 
+                         StackAlloc alloc = StackAlloc()) as
+    (details::create_continuation<Sig>
+     (f, stack_size, std::move(alloc)));
 
 // execute f on existing continuation c, passing to f the current
 // continuation. When f returns, c is resumed; F must return a continuation to c.
@@ -422,16 +422,14 @@ continuation<Sig> callcc(F f,  size_t stack_size = 1024*1024,
 template<class NewIntoSignature,
          class IntoSignature, 
          class F>
-continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
-    return details::interrupt_continuation<NewIntoSignature>(std::move(c), f);
-}
+auto callcc(continuation<IntoSignature> c, F f) as
+    (details::interrupt_continuation<NewIntoSignature>(std::move(c), f));
 
 template<class IntoSignature, 
          class F, 
          class NewIntoSignature = typename details::deduce_signature<F>::type>
-continuation<NewIntoSignature> callcc(continuation<IntoSignature> c, F f) {
-    return details::interrupt_continuation<NewIntoSignature>(std::move(c), f);
-}
+auto callcc(continuation<IntoSignature> c, F f) as
+    (details::interrupt_continuation<NewIntoSignature>(std::move(c), f));
 
 template<class F, class Continuation>
 auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
