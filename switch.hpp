@@ -15,6 +15,55 @@
 #include "macros.hpp"
 #include <iterator>
 namespace gpd {
+struct static_stack_allocator {
+    enum { stack_size = 1024*1024 };
+    static const size_t alignment = 16;
+
+    static void * allocate(size_t size) {
+        void * result = 0;
+        int ret = ::posix_memalign(&result, alignment, size);
+        assert(ret != EINVAL);
+        if(ret == ENOMEM) 
+            throw  std::bad_alloc();
+        return result;
+    }
+
+    static void deallocate(void * ptr) throw() {
+        free(ptr);
+    }
+
+};
+
+struct debug_stack_allocator {
+    static const size_t alignment = 16;
+    enum { stack_size = static_stack_allocator::stack_size };
+    void * allocate(size_t size) {
+        void * ret = static_stack_allocator::allocate(size);
+        count++;
+        return ret;
+    }
+
+    void deallocate(void * ptr) throw() {
+        count--;
+        return static_stack_allocator::deallocate(ptr);
+    }
+
+    debug_stack_allocator(debug_stack_allocator&) = delete;
+    
+    int count;
+    debug_stack_allocator() : count(0) {}
+    debug_stack_allocator(debug_stack_allocator&& rhs) : count(rhs.count) {
+        rhs.count = 0;
+    }
+    ~debug_stack_allocator() { assert(count == 0); }
+};
+
+#ifdef NDEBUG
+typedef static_stack_allocator default_stack_allocator;
+#else
+typedef debug_stack_allocator default_stack_allocator;
+#endif
+
 
 namespace details {
 /// Utility Metafunctions
@@ -92,6 +141,7 @@ struct continuation<Result(Args...)> {
     typedef typename details::make_signature<signature>::rsignature   rsignature;
     typedef typename details::make_signature<signature>::result_type  result_type;
     typedef typename details::make_signature<signature>::xresult_type xresult_type;
+    typedef continuation<rsignature> rcontinuation;
 
     continuation(const continuation&) = delete;
 
@@ -244,7 +294,7 @@ auto do_call(F& f, Continuation c) ->
     typename std::enable_if<std::is_void<decltype(f(std::move(c)))>::value,  
                             switch_pair>::type { 
     f(std::move(c)); 
-    assert("void function is not expected to return," 
+    assert(false && "void function is not expected to return," 
            "throw exit_exception instead"); 
     abort();
  }
@@ -256,14 +306,6 @@ auto do_call(F& f, Continuation c) ->
                             switch_pair>::type { 
     return f(std::move(c)).pilfer();
 }
-
-template<class F, 
-         class Continuation>
-auto do_call(F& f, Continuation c) ->
-    typename sfinae<decltype(f(), c()), switch_pair>::type { 
-    with_escape_continuation([&] { f(); }, std::move(c));
-    return c.pilfer();
- }
 
 template<class Continuation, class F, class StackAlloc>
 switch_pair startup_trampoline(parm_t arg, cont sp) {
@@ -295,35 +337,22 @@ switch_pair interrupt_trampoline(parm_t  p, cont from) {
 
  
 // Helpers
-
-template<class Signature, class F>
-void static_check_fn(F&) { 
-    typedef typename std::result_of<F(continuation<Signature>)>::type
-        result_type;
-
-    static_assert(std::is_same<result_type, continuation<Signature> >::value 
-                  || std::is_same<result_type, void>::value,
-                  "'f' must return the same continuation type as its argument" 
-                  "or void");
-};
-    
-
 template<class Signature, 
          class F,
-         class StackAlloc> 
-continuation<Signature> create_continuation(F f, size_t stack_size, 
-                                            StackAlloc alloc) 
-{
+         class StackAlloc = default_stack_allocator>
+continuation<Signature> 
+create_continuation(F f, StackAlloc alloc = StackAlloc(), 
+                    size_t stack_size = StackAlloc::stack_size)  {
     void * stackp = alloc.allocate(stack_size);
     cont cs { stack_bottom(stackp, stack_size) };
 
     typedef typename continuation<Signature>::rsignature rsignature;
 
-    startup_trampoline_args<F, StackAlloc> args{ 
+    startup_trampoline_args<F, StackAlloc> xargs{ 
         std::move(f), std::move(alloc), stackp
     };
     return continuation<Signature>
-        (execute_into(&args, cs, &startup_trampoline<continuation<rsignature>, 
+        (execute_into(&xargs, cs, &startup_trampoline<continuation<rsignature>, 
                                                     F, StackAlloc>));
 }
 
@@ -348,69 +377,26 @@ struct deduce_signature { typedef Sig type; };
 
 }
 
-struct static_stack_allocator {
-    static const size_t alignment = 16;
-
-    static void * allocate(size_t size) {
-        void * result = 0;
-        int ret = ::posix_memalign(&result, alignment, size);
-        assert(ret != EINVAL);
-        if(ret == ENOMEM) 
-            throw  std::bad_alloc();
-        return result;
-    }
-
-    static void deallocate(void * ptr) throw() {
-        free(ptr);
-    }
-
-};
-
-struct debug_stack_allocator {
-    static const size_t alignment = 16;
-
-    void * allocate(size_t size) {
-        void * ret = static_stack_allocator::allocate(size);
-        count++;
-        return ret;
-    }
-
-    void deallocate(void * ptr) throw() {
-        count--;
-        return static_stack_allocator::deallocate(ptr);
-    }
-
-    debug_stack_allocator(debug_stack_allocator&) = delete;
-    
-    int count;
-    debug_stack_allocator() : count(0) {}
-    debug_stack_allocator(debug_stack_allocator&& rhs) : count(rhs.count) {
-        rhs.count = 0;
-    }
-    ~debug_stack_allocator() { assert(count == 0); }
-};
-
-#ifdef NDEBUG
-typedef static_stack_allocator default_stack_allocator;
-#else
-typedef debug_stack_allocator default_stack_allocator;
-#endif
 ///// Public API
 template<class F, 
-         class StackAlloc = default_stack_allocator,
+         class... Args,
          class Sig = typename details::deduce_signature<F>::type>
-auto callcc(F f, size_t stack_size = 1024*1024, 
-            StackAlloc alloc = StackAlloc()) as 
-                (details::create_continuation<Sig>
-                 (f, stack_size, std::move(alloc)) );
+continuation<Sig> callcc(F f, Args&&... args) {
+    return details::create_continuation<Sig> 
+        (gpd::bind(std::move(f), placeholder<0>(), 
+                   std::forward<Args>(args)...)); 
+}
+
 
 template<class Sig, 
          class F, 
-         class StackAlloc = default_stack_allocator>
-auto callcc(F f,  size_t stack_size = 1024*1024, 
-                         StackAlloc alloc = StackAlloc()) as
-    (details::create_continuation<Sig>
-     (f, stack_size, std::move(alloc)));
+         class... Args>
+continuation<Sig> callcc(F f,  Args&&... args) {
+    return details::create_continuation<Sig>
+        (gpd::bind(std::move(f), placeholder<0>(), 
+                   std::forward<Args>(args)...));
+}
+
 
 // execute f on existing continuation c, passing to f the current
 // continuation. When f returns, c is resumed; F must return a continuation to c.
@@ -421,15 +407,47 @@ auto callcc(F f,  size_t stack_size = 1024*1024,
 // of c and consequently for the continuation passed to f
 template<class NewIntoSignature,
          class IntoSignature, 
-         class F>
-auto callcc(continuation<IntoSignature> c, F f) as
-    (details::interrupt_continuation<NewIntoSignature>(std::move(c), f));
+         class F, class... Args>
+auto callcc(continuation<IntoSignature> c, F f, Args&&... args) as
+    (details::interrupt_continuation<NewIntoSignature>
+     (std::move(c), gpd::bind(std::move(f), placeholder<0>(), std::forward<Args>(args)...)));
 
 template<class IntoSignature, 
          class F, 
+         class ... Args,
+         class NewIntoSignature = typename details::deduce_signature<F>::type>
+auto callcc(continuation<IntoSignature> c, F f, Args&&... args) as
+    (details::interrupt_continuation<NewIntoSignature>
+     (std::move(c), gpd::bind(std::move(f), gpd::placeholder<0>(), 
+                              std::forward<Args>(args)...)));
+
+// the following four oerloads are not strictly necessary but may
+// speedup compilation
+template<class F, 
+         class Sig = typename details::deduce_signature<F>::type>
+continuation<Sig> callcc(F f) {
+    return details::create_continuation<Sig> (f);
+}
+
+template<class Sig, 
+         class F>
+continuation<Sig> callcc(F f) {
+    return details::create_continuation<Sig>(std::move(f));
+}
+
+template<class NewIntoSignature,
+         class IntoSignature, 
+         class F>
+auto callcc(continuation<IntoSignature> c, F f) as
+    (details::interrupt_continuation<NewIntoSignature>
+     (std::move(c), std::move(f)));
+
+template<class IntoSignature, 
+         class F,
          class NewIntoSignature = typename details::deduce_signature<F>::type>
 auto callcc(continuation<IntoSignature> c, F f) as
-    (details::interrupt_continuation<NewIntoSignature>(std::move(c), f));
+    (details::interrupt_continuation<NewIntoSignature>
+     (std::move(c), std::move(f)));
 
 template<class F, class Continuation>
 auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
@@ -439,6 +457,19 @@ auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
         assert(c);
         throw abnormal_exit_exception(c.pilfer());
     }
+}
+
+namespace details {
+template<class F>
+struct escape_protected {
+    F f;
+    template<class C>
+    auto operator()(C c) as (with_escape_continuation(f, std::move(c)));
+};
+}
+template<class F>
+details::escape_protected<F> with_escape_continuation(F &&f) {
+    return details::escape_protected<F>{std::forward<F>(f)};
 }
 
 template<class Signature>

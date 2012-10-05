@@ -16,7 +16,7 @@ struct polymorphic {
 
 gpd::continuation<void()> monomorphic(gpd::continuation<void()> c) { return c; }
 
-int main() {
+int main() { 
     using namespace gpd;
     {
         auto c = callcc([](continuation<void(int)> c) { 
@@ -305,7 +305,8 @@ int main() {
                     return c;
                 });
             try {
-                callcc<void()>(std::move(f), [] { throw 42; } );
+                callcc<void()>(std::move(f), with_escape_continuation
+                               ([] { throw 42; } ));
             } catch(int i) {
                 assert(i == 42);
                 caught++;
@@ -442,9 +443,9 @@ int main() {
     {
         bool caught = false;
         try {
-            auto c = callcc<void()>([] {
+            auto c = callcc<void()>(with_escape_continuation([] {
                     throw 10;
-                });
+                    }));
         } catch(int x) {
             assert(x == 10);
             caught = true;
@@ -465,6 +466,23 @@ int main() {
             });
         std::vector<double> ret = { 0, 2, 4, 6, 8, 10, 12, 14, 16, 18 };
         assert(std::equal(begin(c2), end(c2), ret.begin()));
+    }
+
+    {
+        auto pass1 = callcc([](continuation<void(int)> output) {
+                for(int i = 0; i < 10; ++i)
+                    output(i);
+                return output;
+            });
+        auto pass2 = callcc([](continuation<void(double)> output,
+                               continuation<int()>        input) {
+                                for(auto x: input) {
+                                    output(x*2);
+                                }
+                                return output;
+                         }, std::move(pass1));
+        std::vector<double> ret = { 0, 2, 4, 6, 8, 10, 12, 14, 16, 18 };
+        assert(std::equal(begin(pass2), end(pass2), ret.begin()));
     }
 
 }
