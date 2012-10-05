@@ -468,8 +468,8 @@ struct escape_protected {
 };
 }
 template<class F>
-details::escape_protected<F> with_escape_continuation(F &&f) {
-    return details::escape_protected<F>{std::forward<F>(f)};
+details::escape_protected<F> with_escape_continuation(F f) {
+    return details::escape_protected<F>{std::forward<F>(std::move(f))};
 }
 
 template<class Signature>
