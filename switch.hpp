@@ -454,7 +454,7 @@ auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
     try {
         return f();
     } catch(...) {
-        assert(c);
+        assert(!c.terminated());
         throw abnormal_exit_exception(c.pilfer());
     }
 }
