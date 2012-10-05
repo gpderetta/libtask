@@ -16,7 +16,7 @@ struct polymorphic {
 
 gpd::continuation<void()> monomorphic(gpd::continuation<void()> c) { return c; }
 
-int main() { 
+int main() {
     using namespace gpd;
     {
         auto c = callcc([](continuation<void(int)> c) { 
@@ -386,7 +386,7 @@ int main() {
         bool caught = false;
         try {
             auto c = callcc([](continuation<void()> c)  {
-                    with_escape_continuation([] { throw 10; }, std::move(c));
+                    with_escape_continuation([] { throw 10; }, c);
                     assert(false);
                     return c;
                 });
@@ -402,7 +402,7 @@ int main() {
         try {
             auto c = callcc([](continuation<void()> c)  {
                     c();
-                    with_escape_continuation([] { throw 10; }, std::move(c));
+                    with_escape_continuation([] { throw 10; }, c);
                     assert(false);
                     return c;
                 });
@@ -432,7 +432,7 @@ int main() {
         try {
             auto c = callcc([](continuation<void()> c) {
                     with_escape_continuation
-                    ([]{ throw 10; }, std::move(c));
+                    ([]{ throw 10; }, c);
                 });
         } catch(int x) {
             assert(x == 10);

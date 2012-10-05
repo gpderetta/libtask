@@ -450,7 +450,7 @@ auto callcc(continuation<IntoSignature> c, F f) as
      (std::move(c), std::move(f)));
 
 template<class F, class Continuation>
-auto with_escape_continuation(F &&f, Continuation c) -> decltype(f()) {
+auto with_escape_continuation(F &&f, Continuation& c) -> decltype(f()) {
     try {
         return f();
     } catch(...) {
@@ -464,7 +464,10 @@ template<class F>
 struct escape_protected {
     F f;
     template<class C>
-    auto operator()(C c) as (with_escape_continuation(f, std::move(c)));
+    C operator()(C c) {
+        with_escape_continuation(f, c);
+        return c;
+    }
 };
 }
 template<class F>
