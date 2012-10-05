@@ -15,6 +15,13 @@ void foo(F f, T&& t)
 
 }
 
+struct noncopyable {
+    noncopyable(const noncopyable&) = delete;
+    noncopyable(noncopyable&&rhs) : live(rhs.live) { rhs.live = false; }
+    noncopyable() : live(true) {}
+    bool live;
+};
+
 int main() {
     auto ret = forward([](int a, int b)
                        { 
@@ -94,6 +101,15 @@ int main() {
     }
     {
         int o_x = 99, o_y = 100;
+        auto bound = gpd::bind([&](int&& x, int& y){
+                assert(&o_x != &x);
+                assert(&o_y == &y);
+            }, o_x, $1);
+        
+        bound(o_y);
+    }            
+    {
+        int o_x = 99, o_y = 100;
         auto bound = gpd::bind([&](int& x, int& y){
                 assert(&o_x == &x);
                 assert(&o_y == &y);
@@ -101,4 +117,37 @@ int main() {
         
         bound(o_y);
     }            
+    {
+        noncopyable y;
+        auto bound = gpd::bind([](int, noncopyable y){  
+                assert(y.live);
+            }, 0, $1);
+        
+        bound(std::move(y));
+    }            
+    {
+        // FIXME, this should also compile with a simple reference,
+        // not only rvalue reference
+        noncopyable x, y, z;
+        auto bound = gpd::bind([](noncopyable&& x, noncopyable y){  
+                assert(x.live);
+                assert(y.live);
+            }, std::move(x), $1);
+        
+        bound(std::move(y));
+        bound(std::move(z));
+    }            
+    {
+        noncopyable x, y, z;
+        auto bound = gpd::bind([](noncopyable, noncopyable y){  
+                //assert(x.live);
+                assert(y.live);
+            }, std::move(x), $1);
+        
+        bound(std::move(y));
+        // FIXME: this test should not compile: on the second call
+        // x will have already been moved
+        bound(std::move(z));
+    }            
+
 }
