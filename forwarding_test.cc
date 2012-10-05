@@ -1,6 +1,7 @@
 #include "forwarding.hpp"
 #include <cassert>
 #include <iostream>
+#include <functional>
 using namespace gpd;
 
 placeholder<0> $1;
@@ -74,12 +75,30 @@ int main() {
                   replace_placeholders(pack($2, $1, 666), 
                                         77, 42));
     assert(ret == 100);
-
-    auto bound = bind([](int x, int y){
-            assert(x == 1000);
-            assert(y == 100);
-            return x / y; }, 1000, $1);
-
-    assert(bound(100) == 10);
-            
+    {
+        auto bound = bind([](int x, int y){
+                assert(x == 1000);
+                assert(y == 100);
+                return x / y; }, 1000, $1);
+        
+        assert(bound(100) == 10);
+    }
+    {
+        int o_x = 99, o_y = 100;
+        auto bound = bind([&](int x, int& y){
+                assert(o_x == x);
+                assert(&o_y == &y);
+            }, o_x, $1);
+        
+        bound(o_y);
+    }
+    {
+        int o_x = 99, o_y = 100;
+        auto bound = gpd::bind([&](int& x, int& y){
+                assert(&o_x == &x);
+                assert(&o_y == &y);
+            }, std::ref(o_x), $1);
+        
+        bound(o_y);
+    }            
 }

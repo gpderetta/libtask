@@ -82,6 +82,9 @@ template<class F, class Closure>
 struct binder_t {
     F f; Closure closure;
 
+    binder_t(F&& f, Closure&& closure)
+        : f(std::move(f)), closure(std::move(closure)) {}
+
     template<class... Args>
     auto operator()(Args&&... args)
         as( forward(f, replace_placeholders
