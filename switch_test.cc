@@ -351,7 +351,7 @@ int main() {
                 c();  
                 return c;
             });
-        signal_exit(std::move(f));
+        signal_exit(f);
     }
     {
         // an experiment in continuation signature mutation
@@ -516,6 +516,33 @@ int main() {
                      output(std::to_string(x));
                  }
                  return input;
+             }, callcc
+              ([](continuation<std::string()> input,
+                  std::vector<std::string>& y) {
+                  for(auto&& x: input) {
+                      y.push_back(x);
+                  }
+                  return input;
+              }, std::ref(y))));
+        std::copy(x.begin(),x.end(),
+                  begin(pipeline));
+    }
+    {
+        std::vector<int> x = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        std::vector<std::string> y;
+        auto pipeline = callcc
+            ([](continuation<int()>        input,
+                continuation<void(double)> output) {
+                for(auto x: input)
+                    output(x*2);
+                return output;
+            }, callcc
+             ([](continuation<double()> input,
+                 continuation<void(std::string)>    output) {
+                 for(auto x: input) {
+                     output(std::to_string(x));
+                 }
+                 return output;
              }, callcc
               ([](continuation<std::string()> input,
                   std::vector<std::string>& y) {

@@ -198,7 +198,7 @@ struct continuation<Result(Args...)> {
     }
 
     ~continuation() {
-        if(!terminated()) yield();
+        if(!terminated()) signal_exit(*this);
         assert(terminated());
     }
 
@@ -490,7 +490,7 @@ void exit_to(continuation<Signature> c) {
 }
  
 template<class Signature>
-void signal_exit(continuation<Signature> c) {
+void signal_exit(continuation<Signature>& c) {
     callcc(std::move(c), [] (continuation<void()> c) { 
             exit_to(std::move(c));
         });
