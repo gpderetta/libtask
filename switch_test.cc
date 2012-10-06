@@ -153,7 +153,6 @@ int main() {
         c.get() = 42;
         c();
     }
-
     {
         auto c = callcc([&](continuation<void(int, int)> x) {
                 x(0, 1);
@@ -244,6 +243,23 @@ int main() {
         for(auto& x: merge(a,b)){
             assert(x == i++);
         }
+    }
+    {
+        auto c = callcc([](continuation<int()> c) {
+                int i = 0;
+                for(auto x: c){
+                        assert(x == i++);
+                }
+                return c;
+            });
+
+
+        std::vector<int> a = { 0,2,4,6,8,10 };
+        std::vector<int> b = { 1,3,5,7,9,11 };
+        std::merge(a.begin(), a.end(),
+                   b.begin(), b.end(),
+                   begin(c));
+        c.yield();
     }
     {
 

@@ -189,6 +189,14 @@ struct continuation<Result(Args...)> {
         return result;
     }
 
+    continuation& yield() {
+        assert(!terminated());
+        switch_pair cpair = pilfer(); 
+        pair = stack_switch
+            (cpair.sp, 0); 
+        return *this; 
+    }
+
     ~continuation() {
         assert(terminated());
     }
@@ -541,7 +549,10 @@ begin(continuation<void(T)>& c) { return {c}; }
 
 template<class T>
 input_iterator_adaptor<continuation<T(void)>>
-begin(continuation<T()>& c) { return {&c}; }
+begin(continuation<T()>& c) { 
+    while(!c.terminated() && !c.has_data()) c();
+    return {&c}; 
+}
 
 template<class T>
 input_iterator_adaptor<continuation<T(void)>>
