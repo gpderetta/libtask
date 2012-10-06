@@ -198,6 +198,7 @@ struct continuation<Result(Args...)> {
     }
 
     ~continuation() {
+        if(!terminated()) yield();
         assert(terminated());
     }
 
