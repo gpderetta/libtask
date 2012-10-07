@@ -4,6 +4,11 @@
 #include <cstring>
 namespace gpd {
 
+/**
+ * strict-aliasing safe version of reinterpret-cast Convert value 'b'
+ * of type B to an value of type A, keeping the same bit
+ * rapresentaiton.
+ */
 template<class A, class B>
 A bitcast(B b) {
     static_assert(sizeof(A) == sizeof(b), "size mismatch");
