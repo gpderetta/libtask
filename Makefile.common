@@ -122,7 +122,7 @@ $(STATIC_LIBRARIES:%=%.a):
 %.d:
 	@printf $(msg_header) DP $@; \
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF  $@ $<; \
-	perl -pi -e 's{^(.*?)\.o[ :]+}{$$1.o $$1.d :}g' $@ ; \
+	perl -pi -e 's{^(.*?)\.o[ :]+}{$(OBJ_DIR)/$$1.o $$1.d :}g' $@ ; \
 	if [ $$? -eq 0 ]  ; then \
 		printf $(msg_pass) OK ;\
 		exit 0;\
@@ -144,7 +144,7 @@ $(STATIC_LIBRARIES:%=%.a):
 	fi ; \
 
 clean:
-	echo Cleaning... ; \
+	@echo Cleaning... ; \
 	rm -f $(ALL_OBJS) \
 	rm -f $(ALL_DEPS) \
 	rm -f $(PROGRAM_BIN) \
