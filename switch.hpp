@@ -15,6 +15,15 @@
 #include "macros.hpp"
 #include <iterator>
 namespace gpd {
+
+namespace details {
+struct switch_pair_accessor { 
+    template<class X>
+    static switch_pair pilfer(X&& x) { return x.pilfer(); }
+
+};
+}
+
 struct static_stack_allocator {
     enum { stack_size = 1024*1024 };
     static const size_t alignment = 16;
@@ -137,6 +146,7 @@ class continuation;
 
 template<class Result, class... Args>
 struct continuation<Result(Args...)> {
+    friend class details::switch_pair_accessor;
     typedef Result signature (Args...);
     typedef typename details::make_signature<signature>::rsignature   rsignature;
     typedef typename details::make_signature<signature>::result_type  result_type;
@@ -183,12 +193,6 @@ struct continuation<Result(Args...)> {
         return !pair.sp;
     }
 
-    switch_pair pilfer() {
-        switch_pair result = pair;
-        pair = {{0},0};
-        return result;
-    }
-
     continuation& yield() {
         assert(!empty());
         switch_pair cpair = pilfer(); 
@@ -203,6 +207,12 @@ struct continuation<Result(Args...)> {
     }
 
 private:
+    switch_pair pilfer() {
+        switch_pair result = pair;
+        pair = {{0},0};
+        return result;
+    }
+
     template<class T> 
     static bool has_data(details::tag<T>, void * parm)  {
         return parm;
@@ -239,22 +249,27 @@ private:
 
 struct exit_exception 
     : std::exception {
+    friend class details::switch_pair_accessor;
 
     template<class Signature>
     explicit exit_exception(continuation<Signature> exit_to)
-        : exit_to(exit_to.pilfer()) {}
+        : exit_to(details::switch_pair_accessor::pilfer(exit_to)) {}
 
     ~exit_exception() throw() {
         assert(!exit_to.sp);
     }
 
+    exit_exception(const exit_exception&) = delete;
+
+    exit_exception(exit_exception&& rhs) : exit_to(rhs.pilfer()) {}    
+
+private:
     switch_pair pilfer() { 
         switch_pair result = {{0},0};
         std::swap(result, exit_to);
         return result;
     }
 
-private:
     switch_pair exit_to;
 };
 
@@ -326,7 +341,7 @@ template<class F,
 auto do_call(F& f, Continuation c) ->
     typename std::enable_if<!std::is_void<decltype(f(std::move(c)))>::value,  
                             switch_pair>::type { 
-    return f(std::move(c)).pilfer();
+    return details::switch_pair_accessor::pilfer(f(std::move(c)));
 }
 
 template<class Continuation, class F, class StackAlloc>
@@ -339,10 +354,10 @@ switch_pair startup_trampoline(parm_t arg, cont sp) {
         switch_pair pair = {sp,0};
         sp = do_call(f, Continuation(pair)).sp;
     } catch(abnormal_exit_exception& e) {
-        sp = e.pilfer().sp;
+        sp = details::switch_pair_accessor::pilfer(e).sp;
         cleanup_args.excp = e.nested_ptr();
     } catch(exit_exception& e) {
-        sp = e.pilfer().sp;
+        sp = details::switch_pair_accessor::pilfer(e).sp;
     } 
     assert(sp && "invalid target stack");
     return execute_into(&cleanup_args, sp, &cleanup_trampoline<StackAlloc>); 
@@ -385,7 +400,7 @@ interrupt_continuation(continuation<IntoSignature> c, F f) {
         new_from_signature;
 
     return continuation<NewIntoSignature>
-        (execute_into(&f, c.pilfer().sp, 
+        (execute_into(&f, details::switch_pair_accessor::pilfer(c).sp, 
                       &interrupt_trampoline<new_from_signature, F>));
 }
 
