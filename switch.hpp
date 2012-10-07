@@ -1,172 +1,137 @@
 #ifndef GPD_SWITCH_HPP
 #define GPD_SWITCH_HPP
+#include "continuation_exception.hpp"
+#include "details/continuation_meta.hpp"
+#include "details/continuation_details.hpp"
+#include "details/switch_base.hpp"
 #include "forwarding.hpp"
-#include "guard.hpp"
 #include "bitcast.hpp"
-#include "switch_base.hpp"
 #include "tuple.hpp"
-#include "signature.hpp"
 #include <exception>
 #include <cstring>
 #include <iterator>
-#include <stdlib.h>
 #include <memory>
 #include <type_traits>
-#include "macros.hpp"
 #include <iterator>
+#include "macros.hpp"
+
 namespace gpd {
 
-namespace details {
-struct switch_pair_accessor { 
-    template<class X>
-    static switch_pair pilfer(X&& x) { return x.pilfer(); }
-
-};
-}
-
-struct static_stack_allocator {
-    enum { stack_size = 1024*1024 };
-    static const size_t alignment = 16;
-
-    static void * allocate(size_t size) {
-        void * result = 0;
-        int ret = ::posix_memalign(&result, alignment, size);
-        assert(ret != EINVAL);
-        if(ret == ENOMEM) 
-            throw  std::bad_alloc();
-        return result;
-    }
-
-    static void deallocate(void * ptr) throw() {
-        free(ptr);
-    }
-
-};
-
-struct debug_stack_allocator {
-    static const size_t alignment = 16;
-    enum { stack_size = static_stack_allocator::stack_size };
-    void * allocate(size_t size) {
-        void * ret = static_stack_allocator::allocate(size);
-        count++;
-        return ret;
-    }
-
-    void deallocate(void * ptr) throw() {
-        count--;
-        return static_stack_allocator::deallocate(ptr);
-    }
-
-    debug_stack_allocator(debug_stack_allocator&) = delete;
-    
-    int count;
-    debug_stack_allocator() : count(0) {}
-    debug_stack_allocator(debug_stack_allocator&& rhs) : count(rhs.count) {
-        rhs.count = 0;
-    }
-    ~debug_stack_allocator() { assert(count == 0); }
-};
-
-#ifdef NDEBUG
-typedef static_stack_allocator default_stack_allocator;
-#else
-typedef debug_stack_allocator default_stack_allocator;
-#endif
-
-
-namespace details {
-/// Utility Metafunctions
-
-template<class> class tag {};
-
-template<class Ret>
-struct result_traits {
-    typedef Ret              result_type;
-    typedef std::tuple<Ret>&   xresult_type;
-};
-
-template<class... Ret>
-struct result_traits<std::tuple<Ret...> > {
-    typedef std::tuple<Ret...>&& result_type;
-    typedef std::tuple<Ret...>&  xresult_type;
-};
-
-template<>
-struct result_traits<void> {
-    typedef void result_type;
-    typedef void xresult_type;
-};
-
-template<class...Ret>
-struct result_pack { typedef std::tuple<Ret...> type; };
-
-template<class Ret>
-struct result_pack<Ret> { typedef Ret type; };
-
-template<>
-struct result_pack<> { typedef void type; };
-
-template<class Ret, class... Parm>
-struct compose_signature { typedef Ret type(Parm...); };
-
-template<class Ret, class... Parms>
-struct compose_signature<Ret, std::tuple<Parms...> > 
-    : compose_signature<Ret, Parms...> { };
-
-template<class Ret>
-struct compose_signature<Ret, void> 
-    : compose_signature<Ret> { };
-
-template<class> struct reverse_signature;
-template<class Ret, class... Args>
-struct reverse_signature<Ret(Args...)> 
-    : compose_signature<typename result_pack<Args...>::type, Ret>   {};
-
-template<class Signature> struct make_signature; 
-template<class Ret, class... Args>
-struct make_signature<Ret(Args...)> 
-    : result_traits<Ret> {
-    typedef typename reverse_signature<Ret(Args...)>::type rsignature;
-};
-
-
-template<class Sig>
-struct parm0;
-
-template<class Ret, class Arg0, class... Args>
-struct parm0<Ret(Arg0, Args...)> { typedef Arg0 type; };
-
-}
-
-
-/// Main continuation classes
-
+/**
+ * A continuation object represent a reified (typed) step of a
+ * computation, or execution context.
+ *
+ * The Signature parameter is the type of the halted computation,
+ * represented as a function type.
+ *
+ * A continuation can be understood as a typed, two-way, synchronous,
+ * unbuffered pipe which communicates with another execution
+ * context. operator() is used for rendez-vous and to send
+ * messages. Receieved messages can be retrived via operator get().
+ *
+ * Like the two ends of a pipe, continuations always come in pairs;
+ * for every continuation A of signature R(T), there is a dual
+ * continuation B of signature T(R). Each end, or execution context,
+ * will own the end of the pipe that represent the other context. 
+ *
+ * Resuming the context associated with a continuation halts the
+ * current context and 'consumes' the continuation putting it in the
+ * empty() state as no halted context is associated with it any more.
+ * When the current context is resumed again the continuation may or
+ * not be non empty again depending on the action of the other
+ * context.
+ *
+ * From the above paragraph follows that for every continuation pair,
+ * at most only one end will be non empty() at any time.
+ *
+ * Continuation pairs are usually created via the callcc family of
+ * functions.
+ *
+ * Continuations are first class movable objects and can be put in
+ * containers and even passed to other continuations, to create
+ * complex control flows.
+ *
+ * Continuation pairs can also be disassociated and associated with
+ * other endpoints.
+ *
+ * Continuations of the kind void(T) model output ranges, while
+ * continuations of kind T() model input ranges. 
+ *
+ * Continuations signatures can also be n-ary, with signature R(T1,
+ * T2, T3...); in this case the dual continuation will have signature
+ * std::tuple<T1, T2, T3...>(R).
+ *
+ * A continuation signature supports all C++ argument passing styles,
+ * including, pass by value, refrence, const reference, rvalue
+ * reference. In particular Movable only arguments are handled correctly.
+ *
+ * NOTE: continuations are one shot, and should be called exactly once
+ * before are destroied or replaced with a new continuaiton. Currently
+ * the destructor will try to exit the associated context if the
+ * continuation is not empty().
+ **/
 template<class Signature = void()>
 class continuation;
 
 template<class Result, class... Args>
 struct continuation<Result(Args...)> {
     friend class details::switch_pair_accessor;
+    // Same as the Signature template parameter.
     typedef Result signature (Args...);
-    typedef typename details::make_signature<signature>::rsignature   rsignature;
-    typedef typename details::make_signature<signature>::result_type  result_type;
-    typedef typename details::make_signature<signature>::xresult_type xresult_type;
+    // Signature of the dual continuation.
+    typedef typename details::make_signature<signature>::rsignature rsignature;
+    // Type of the dual continuaiton.
     typedef continuation<rsignature> rcontinuation;
 
+    // Result type of this continuation as a reference or rvalue reference.
+    typedef typename details::make_signature<signature>::result_type  result_type;
+
+    // A continuation is non copyable
     continuation(const continuation&) = delete;
 
+    /** 
+     * Default constructor.
+     *
+     * The created continuation is in the empty() state.
+     **/
     continuation() : pair{{0},0} {}
 
+    // Move constructor
     continuation(continuation&& rhs) : pair(rhs.pilfer()) {}
 
+    // Create a continuation from the internal untyped switch_pair object.
+    //
+    // TODO: this should be private
     explicit continuation(switch_pair pair) : pair(pair) {}
 
+    // Move assignment operator
     continuation& operator=(continuation rhs) {
         assert(empty());
         pair = rhs.pilfer();
         return *this;
     }
 
+    /**
+     * Perform randez-vous with the other end of the pipe, blocking
+     * this execution context and resuming the other. Also send
+     * parameters 'args...' to the other end;
+     * 
+     * The halted control flow A, represented by this continuation, is
+     * resumed and the current control flow B, is halted. When B is
+     * resumend, 'this' will be replaced by a new continuation,
+     * usually, but not necessarily, representing the new halted
+     * control flow A.
+     *
+     * Preconditions: this is not empty()
+     *
+     * Postcondition: if this is not empty(), it represent the new
+     * halted control flow B; if this is empty(), the control flow of B has
+     * exited or has been captured in another continuation.
+     *
+     * Throws: Any exception thrown from the exited control flow, or
+     * any exception that has been explicitly sent to this control
+     * flow.
+     */
     continuation& operator() (Args... args) {
         assert(!empty());
         switch_pair cpair = pilfer(); 
@@ -176,23 +141,45 @@ struct continuation<Result(Args...)> {
         return *this; 
     }
     
+    /**
+     * Precondition has_data() == true and result_type != void
+     * 
+     * Returns the data that has been sent to this continuation at the
+     * last randez-vous.
+     */
     result_type get() const {
         assert(has_data());
         return get(details::tag<result_type>(), pair.parm);
     }
     
+    /** 
+     * Returns true if !empty() && has_data.
+     *
+     * NOTE that has_data is always true if result_type is void
+     */  
     explicit operator bool() const {
         return !empty() && has_data();
     }
 
+    /**
+     * Returns true if there is data retrivable via get(). If
+     * result_type is void, always returns true.
+     */ 
     bool has_data() const {
         return has_data(details::tag<result_type>(), pair.parm);
     }
 
+    /**
+     * Returns true if this continuation is not associated with an
+     * halted execution context.
+     */
     bool empty() const {
         return !pair.sp;
     }
 
+    /**
+     * Same as operator(), except that no data is sent to the other end.
+     */
     continuation& yield() {
         assert(!empty());
         switch_pair cpair = pilfer(); 
@@ -201,12 +188,25 @@ struct continuation<Result(Args...)> {
         return *this; 
     }
 
+    /**
+     * Destroy current continuation. If continuation is not empty(),
+     * an exit is forced. 
+     *
+     * Precondition: empty() or empty() after as signal_exit;
+     */
     ~continuation() {
         if(!empty()) signal_exit(*this);
         assert(empty());
     }
 
 private:
+    /** 
+     * Returns the internal switch_pair object, leaving the current
+     * continuation empty.
+     *
+     * Postcondition: empty() == true;
+     * NOTE: this function should be private
+     */
     switch_pair pilfer() {
         switch_pair result = pair;
         pair = {{0},0};
@@ -246,175 +246,6 @@ private:
     switch_pair pair;
 };
 
-
-struct exit_exception 
-    : std::exception {
-    friend class details::switch_pair_accessor;
-
-    template<class Signature>
-    explicit exit_exception(continuation<Signature> exit_to)
-        : exit_to(details::switch_pair_accessor::pilfer(exit_to)) {}
-
-    ~exit_exception() throw() {
-        assert(!exit_to.sp);
-    }
-
-    exit_exception(const exit_exception&) = delete;
-
-    exit_exception(exit_exception&& rhs) : exit_to(rhs.pilfer()) {}    
-
-private:
-    switch_pair pilfer() { 
-        switch_pair result = {{0},0};
-        std::swap(result, exit_to);
-        return result;
-    }
-
-    switch_pair exit_to;
-};
-
-struct abnormal_exit_exception 
-    : exit_exception {
-
-    std::exception_ptr ptr;
-
-    template<class Signature>
-    explicit abnormal_exit_exception(continuation<Signature> exit_to)
-        : exit_exception(std::move(exit_to))
-        , ptr(std::current_exception()){}
-
-    std::exception_ptr nested_ptr() const { 
-        return ptr;
-    }
-
-    ~abnormal_exit_exception() throw() {}
-};
-
-namespace details { // Internal Trampolines 
-
-template<class StackAlloc>
-struct cleanup_trampoline_args {
-    StackAlloc allocator; 
-    void * stackp;
-    std::exception_ptr excp;
-
-    void operator()() { allocator.deallocate(stackp); }
-    cleanup_trampoline_args(cleanup_trampoline_args&&) = default;
-};
-
-template<class StackAlloc>
-switch_pair cleanup_trampoline(parm_t arg, cont)  {
-    auto argsp = static_cast<cleanup_trampoline_args<StackAlloc> *>(arg);
-    auto g = guard
-        ([&]{ 
-            auto alloc = std::move(argsp->allocator); // Must not throw, othwise we leak memory
-            void * stackp = argsp->stackp;
-            argsp->~cleanup_trampoline_args<StackAlloc>();
-            alloc.deallocate(stackp);
-        });
-    if (argsp->excp) std::rethrow_exception(argsp->excp);
-    return switch_pair{{0}, 0};
-}
-
-template<class F, class StackAlloc>
-struct startup_trampoline_args { // POD
-    startup_trampoline_args(startup_trampoline_args&) = default;
-    F functor;
-    StackAlloc allocator;
-    void * stackp;
-    startup_trampoline_args(startup_trampoline_args&&) = default;
-};
-
-template<class F, 
-         class Continuation>
-auto do_call(F& f, Continuation c) ->
-    typename std::enable_if<std::is_void<decltype(f(std::move(c)))>::value,  
-                            switch_pair>::type { 
-    f(std::move(c)); 
-    assert(false && "void function is not expected to return," 
-           "throw exit_exception instead"); 
-    abort();
- }
-
-template<class F, 
-         class Continuation>
-auto do_call(F& f, Continuation c) ->
-    typename std::enable_if<!std::is_void<decltype(f(std::move(c)))>::value,  
-                            switch_pair>::type { 
-    return details::switch_pair_accessor::pilfer(f(std::move(c)));
-}
-
-template<class Continuation, class F, class StackAlloc>
-switch_pair startup_trampoline(parm_t arg, cont sp) {
-    auto argsp = static_cast<startup_trampoline_args<F, StackAlloc>*>(arg);
-    cleanup_trampoline_args<StackAlloc> cleanup_args
-    { std::move(argsp->allocator), argsp->stackp, 0 };
-    try {
-        auto f(std::move(argsp->functor)); 
-        switch_pair pair = {sp,0};
-        sp = do_call(f, Continuation(pair)).sp;
-    } catch(abnormal_exit_exception& e) {
-        sp = details::switch_pair_accessor::pilfer(e).sp;
-        cleanup_args.excp = e.nested_ptr();
-    } catch(exit_exception& e) {
-        sp = details::switch_pair_accessor::pilfer(e).sp;
-    } 
-    assert(sp && "invalid target stack");
-    return execute_into(&cleanup_args, sp, &cleanup_trampoline<StackAlloc>); 
-}
-
-template<class FromSignature, class F>
-switch_pair interrupt_trampoline(parm_t  p, cont from) {
-    typedef continuation<FromSignature> from_cont;
-    typename std::remove_reference<F>::type f
-        = std::move(*static_cast<F*>(p));
-    switch_pair r {from, 0};
-    return do_call(f, from_cont(r));
-}
-
- 
-// Helpers
-template<class Signature, 
-         class F,
-         class StackAlloc = default_stack_allocator>
-continuation<Signature> 
-create_continuation(F f, StackAlloc alloc = StackAlloc(), 
-                    size_t stack_size = StackAlloc::stack_size)  {
-    void * stackp = alloc.allocate(stack_size);
-    cont cs { stack_bottom(stackp, stack_size) };
-
-    typedef typename continuation<Signature>::rsignature rsignature;
-
-    startup_trampoline_args<F, StackAlloc> xargs{ 
-        std::move(f), std::move(alloc), stackp
-    };
-    return continuation<Signature>
-        (execute_into(&xargs, cs, &startup_trampoline<continuation<rsignature>, 
-                                                    F, StackAlloc>));
-}
-
-template<class NewIntoSignature, class IntoSignature, class F>
-continuation<NewIntoSignature> 
-interrupt_continuation(continuation<IntoSignature> c, F f) {
-    typedef typename make_signature<NewIntoSignature>::rsignature 
-        new_from_signature;
-
-    return continuation<NewIntoSignature>
-        (execute_into(&f, details::switch_pair_accessor::pilfer(c).sp, 
-                      &interrupt_trampoline<new_from_signature, F>));
-}
-
-template<class F, 
-         class FSig = typename signature<F>::type,
-         class Parm = typename parm0<FSig>::type,
-         class RSig = typename Parm::signature,
-         class Sig  = typename make_signature<RSig>::rsignature
-         > 
-struct deduce_signature { typedef Sig type; };
-
-}
-
-///// Public API
 template<class F, 
          class... Args,
          class Sig = typename details::deduce_signature<F>::type>
@@ -458,8 +289,10 @@ auto callcc(continuation<IntoSignature> c, F f, Args&&... args) as
      (std::move(c), gpd::bind(std::move(f), gpd::placeholder<0>(), 
                               std::forward<Args>(args)...)));
 
-// the following four oerloads are not strictly necessary but may
-// speedup compilation
+/**
+ * The following four oerloads are not strictly necessary but may
+ * speedup compilation by skipping the argument packing via bind.
+ */
 template<class F, 
          class Sig = typename details::deduce_signature<F>::type>
 continuation<Sig> callcc(F f) {

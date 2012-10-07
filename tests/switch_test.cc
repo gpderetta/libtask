@@ -499,7 +499,6 @@ int main() {
         std::vector<double> ret = { 0, 2, 4, 6, 8, 10, 12, 14, 16, 18 };
         assert(std::equal(begin(pass2), end(pass2), ret.begin()));
     }
-
     {
         std::vector<int> x = { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         std::vector<std::string> y;
@@ -542,7 +541,7 @@ int main() {
                  for(auto x: input) {
                      output(std::to_string(x));
                  }
-                 return output;
+                 return input;
              }, callcc
               ([](continuation<std::string()> input,
                   std::vector<std::string>& y) {

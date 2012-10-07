@@ -1,6 +1,14 @@
 .PHONY: clean all test run-test
 all: $(PROGRAMS) $(LIBRARIES:%=%.so) $(STATIC_LIBRARIES:%=%.a)
 
+OBJ_DIR=objs
+DEP_DIR=deps
+TST_DIR=tests
+BIN_DIR=bin
+
+TEST_BIN:=$(addprefix $(BIN_DIR)/,$(TESTS))
+PROGRAM_BIN:=$(addprefix $(BIN_DIR)/,$(PROGRAMS))
+
 SUPPRESS=1
 
 ifeq ($(TERM),dumb) 
@@ -15,12 +23,13 @@ endif
 
 
 define TEST_template
-$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
-$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+$(2)_OBJS=$(OBJ_DIR)/$(1).o
+$(2)_DEPS=$(DEP_DIR)/$(1).d
 
-$(1): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
-
-.PHONY: $$($(2)_LIBS:%=-l%)
+$$($(2)_OBJS): $(OBJ_DIR)/%.o: $(TST_DIR)/%.cc
+$$($(2)_DEPS): $(DEP_DIR)/%.d: $(TST_DIR)/%.cc
+$(BIN_DIR)/$(1): LDFLAGS+=$$($(2)_LIBS:%=-l%)
+$(BIN_DIR)/$(1): $$($(2)_OBJS)
 
 ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
@@ -28,17 +37,18 @@ endef
 
 define PROGRAM_template
 ifndef $(2)_SOURCES
-	$(2)_OBJS=$(1).o
-	$(2)_DEPS=$(1).d
+	$(2)_OBJS=$(OBJ_DIR)/$(1).o
+	$(2)_DEPS=$(DEP_DIR)/$(1).d
 else
-	$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o) $(1).o
-	$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d) $(1).d
+	$(2)_OBJS=$($(2)_SOURCES:%.cc=$(OBJ_DIR)/%.o) #$(OBJ_DIR)/$(1).o
+	$(2)_DEPS=$($(2)_SOURCES:%.cc=$(DEP_DIR)/%.d) #$(DEP_DIR)/$(1).d
 endif
 
-$(1): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
-
-.PHONY: $$($(2)_LIBS:%=-l%)
-
+$$($(2)_OBJS): $(OBJ_DIR)/%.o: %.cc
+$$($(2)_DEPS): $(DEP_DIR)/%.d: %.cc
+$(BIN_DIR)/$(1): $$($(2)_OBJS)
+$(BIN_DIR)/$(1): LDFLAGS+=$$($(2)_LIBS:%=-l%)
+$(1): $(BIN_DIR)/$(1)
 ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
@@ -67,30 +77,30 @@ endef
 
 
 $(foreach prog,$(PROGRAMS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
-$(foreach prog,$(TESTS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
-$(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
-$(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
+$(foreach prog,$(TESTS),$(eval $(call TEST_template,$(prog),$(subst -,_,$(prog)))))
+#$(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
+#$(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 
+setup-dirs:
+	@[ -e $(BIN_DIR) ] || mkdir $(BIN_DIR);\
+	[ -e $(DEP_DIR) ] || mkdir $(DEP_DIR);\
+	[ -e $(OBJ_DIR) ] || mkdir $(OBJ_DIR);\
 
-$(PROGRAMS):
+$(BIN_DIR)/%:
 	@printf $(msg_header) LK $@; \
-	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) " ; \
-	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	if $$cmd   ; then \
-		printf $(msg_pass) OK ;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-	fi ; \
-
-$(TESTS):
-	@printf $(msg_header) LK $@; \
+	mkdir $(BIN_DIR) 2>/dev/null; \
 	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) "; \
 	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
 	if $$cmd   ; then \
 		printf $(msg_pass) OK ;\
+		exit 0;\
 	else 	\
 		printf $(msg_fail) FAIL  ;\
+		exit 1;\
 	fi ; \
+
+$(PROGRAMS):%: setup-dirs $(BIN_DIR)/%
+	@echo  $@ built
 
 $(LIBRARIES:%=%.so):
 	@printf $(msg_header) LK $@; \
@@ -98,53 +108,64 @@ $(LIBRARIES:%=%.so):
 	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
 	if $$cmd   ; then \
 		printf $(msg_pass) OK ;\
+		exit 0;\
 	else 	\
 		printf $(msg_fail) FAIL  ;\
+		exit 1;\
 	fi ; \
 
 $(STATIC_LIBRARIES:%=%.a):
 	@printf $(msg_header) AR $@; \
 	ar rcs  $@ $^
 
-%.d: %.cc
+
+%.d:
 	@printf $(msg_header) DP $@; \
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF $@ $<; \
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF  $@ $<; \
 	perl -pi -e 's{^(.*?)\.o[ :]+}{$$1.o $$1.d :}g' $@ ; \
 	if [ $$? -eq 0 ]  ; then \
 		printf $(msg_pass) OK ;\
+		exit 0;\
 	else 	\
 		printf $(msg_fail) FAIL  ;\
+		exit 1;\
 	fi ; \
 
-
-%.o: %.cc
+%.o:
 	@printf $(msg_header) CC $@; \
 	cmd="$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $< "; \
 	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
 	if $$cmd   ; then \
 		printf $(msg_pass) OK ;\
+		exit 0;\
 	else 	\
 		printf $(msg_fail) FAIL  ;\
+		exit 1;\
 	fi ; \
 
 clean:
-	@echo Cleaning... ; \
-	rm -f $(ALL_OBJS) $(ALL_DEPS) $(PROGRAMS) $(TESTS) $(STATIC_LIBRARIES:%=%.a) *.d
+	echo Cleaning... ; \
+	rm -f $(ALL_OBJS) \
+	rm -f $(ALL_DEPS) \
+	rm -f $(PROGRAM_BIN) \
+	rm -f $(TEST_BIN) \
+	rm -f $(STATIC_LIBRARIES:%=%.a)
 
-test : $(TESTS)
+test : setup-dirs $(TEST_BIN)
 
 
-run-%_test: %_test
+run-%_test: test
 	@test=$(subst run-,,$@) ;	\
     printf $(msg_header) TT $$test ; \
-	if ./$$test   ; then \
+	if bin/$$test   ; then \
 		printf $(msg_pass) PASS ;\
+		exit 0;\
 	else 	\
 		printf $(msg_fail) FAIL  ;\
+		exit 1;\
 	fi ; \
 
 run-test: test $(foreach test,$(TESTS),run-$(test))
-
 
 ifneq "$(MAKECMDGOALS)" "clean"
   -include $(ALL_DEPS)

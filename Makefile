@@ -1,7 +1,8 @@
 FEATURE_FLAGS= --std=c++0x
-DEVEL_FLAGS= -W -Wall -O0 -mfpmath=sse -march=native -ffast-math -fopenmp -g  -mno-red-zone  -fnon-call-exceptions -fasynchronous-unwind-tables 
+DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
 
-INCLUDE=
+
+INCLUDE=-I.
 CXX=g++-4.6
 CPPFLAGS=  $(INCLUDE) 
 CXXFLAGS ?= $(FEATURE_FLAGS) $(DEVEL_FLAGS)
