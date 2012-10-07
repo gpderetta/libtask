@@ -5,7 +5,6 @@
 #include "details/continuation_details.hpp"
 #include "details/switch_base.hpp"
 #include "forwarding.hpp"
-#include "bitcast.hpp"
 #include "tuple.hpp"
 #include <exception>
 #include <cstring>
@@ -16,8 +15,8 @@
 #include "macros.hpp"
 
 namespace gpd {
-
-/**
+    
+/**    
  * A continuation object represent a reified (typed) step of a
  * computation, or execution context.
  *
