@@ -152,13 +152,13 @@ struct continuation<Result(Args...)> {
     explicit continuation(switch_pair pair) : pair(pair) {}
 
     continuation& operator=(continuation rhs) {
-        assert(terminated());
+        assert(empty());
         pair = rhs.pilfer();
         return *this;
     }
 
     continuation& operator() (Args... args) {
-        assert(!terminated());
+        assert(!empty());
         switch_pair cpair = pilfer(); 
         std::tuple<Args...> p(std::forward<Args>(args)...);
         pair = stack_switch
@@ -172,14 +172,14 @@ struct continuation<Result(Args...)> {
     }
     
     explicit operator bool() const {
-        return !terminated() && has_data();
+        return !empty() && has_data();
     }
 
     bool has_data() const {
         return has_data(details::tag<result_type>(), pair.parm);
     }
 
-    bool terminated() const {
+    bool empty() const {
         return !pair.sp;
     }
 
@@ -190,7 +190,7 @@ struct continuation<Result(Args...)> {
     }
 
     continuation& yield() {
-        assert(!terminated());
+        assert(!empty());
         switch_pair cpair = pilfer(); 
         pair = stack_switch
             (cpair.sp, 0); 
@@ -198,8 +198,8 @@ struct continuation<Result(Args...)> {
     }
 
     ~continuation() {
-        if(!terminated()) signal_exit(*this);
-        assert(terminated());
+        if(!empty()) signal_exit(*this);
+        assert(empty());
     }
 
 private:
@@ -463,7 +463,7 @@ auto with_escape_continuation(F &&f, Continuation& c) -> decltype(f()) {
     try {
         return f();
     } catch(...) {
-        assert(!c.terminated());
+        assert(!c.empty());
         throw abnormal_exit_exception(c.pilfer());
     }
 }
@@ -551,7 +551,7 @@ begin(continuation<void(T)>& c) { return {c}; }
 template<class T>
 input_iterator_adaptor<continuation<T(void)>>
 begin(continuation<T()>& c) { 
-    while(!c.terminated() && !c.has_data()) c();
+    while(!c.empty() && !c.has_data()) c();
     return {&c}; 
 }
 

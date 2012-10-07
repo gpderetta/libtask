@@ -295,7 +295,7 @@ int main() {
         while(!cvector.empty()) {
             auto new_end = std::remove_if
                 (cvector.begin(), cvector.end(), 
-                 [](task& x) { return x.terminated(); }); 
+                 [](task& x) { return x.empty(); }); 
             cvector.erase(new_end, cvector.end());
 
 #pragma omp parallel for
