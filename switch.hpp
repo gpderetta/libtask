@@ -239,11 +239,23 @@ private:
 
 struct exit_exception 
     : std::exception {
-    explicit exit_exception(switch_pair exit_to)
-        : exit_to(exit_to) {}
-    
+
+    template<class Signature>
+    explicit exit_exception(continuation<Signature> exit_to)
+        : exit_to(exit_to.pilfer()) {}
+
+    ~exit_exception() throw() {
+        assert(!exit_to.sp);
+    }
+
+    switch_pair pilfer() { 
+        switch_pair result = {{0},0};
+        std::swap(result, exit_to);
+        return result;
+    }
+
+private:
     switch_pair exit_to;
-    ~exit_exception() throw() {}
 };
 
 struct abnormal_exit_exception 
@@ -251,8 +263,9 @@ struct abnormal_exit_exception
 
     std::exception_ptr ptr;
 
-    explicit abnormal_exit_exception(switch_pair exit_to)
-        : exit_exception(exit_to)
+    template<class Signature>
+    explicit abnormal_exit_exception(continuation<Signature> exit_to)
+        : exit_exception(std::move(exit_to))
         , ptr(std::current_exception()){}
 
     std::exception_ptr nested_ptr() const { 
@@ -326,10 +339,10 @@ switch_pair startup_trampoline(parm_t arg, cont sp) {
         switch_pair pair = {sp,0};
         sp = do_call(f, Continuation(pair)).sp;
     } catch(abnormal_exit_exception& e) {
-        sp = e.exit_to.sp;
+        sp = e.pilfer().sp;
         cleanup_args.excp = e.nested_ptr();
     } catch(exit_exception& e) {
-        sp = e.exit_to.sp;
+        sp = e.pilfer().sp;
     } 
     assert(sp && "invalid target stack");
     return execute_into(&cleanup_args, sp, &cleanup_trampoline<StackAlloc>); 
@@ -464,7 +477,7 @@ auto with_escape_continuation(F &&f, Continuation& c) -> decltype(f()) {
         return f();
     } catch(...) {
         assert(!c.empty());
-        throw abnormal_exit_exception(c.pilfer());
+        throw abnormal_exit_exception(std::move(c));
     }
 }
 
@@ -486,7 +499,7 @@ details::escape_protected<F> with_escape_continuation(F f) {
 
 template<class Signature>
 void exit_to(continuation<Signature> c) {
-    throw exit_exception(c.pilfer());
+    throw exit_exception(std::move(c));
 }
  
 template<class Signature>
