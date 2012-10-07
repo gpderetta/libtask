@@ -1,5 +1,5 @@
 #include "future.hpp"
-#include "switch.hpp"
+#include "continuation.hpp"
 #include <cassert>
 #include <functional>
 int main() {

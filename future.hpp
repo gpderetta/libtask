@@ -1,6 +1,6 @@
 #ifndef GPD_FUTURE_HPP
 #define GPD_FUTURE_HPP
-#include "switch.hpp"
+#include "continuation.hpp"
 #include <numeric>
 namespace gpd {
 typedef continuation<void()> task_t;

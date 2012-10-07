@@ -14,7 +14,7 @@ BOOST_SYS_LIB=boost_system
 PROGRAMS=swarm
 
 TESTS=match_test\
-	switch_test \
+	continuation_test \
 	mpsc_queue_test  \
 	forwarding_test \
 	future_test \

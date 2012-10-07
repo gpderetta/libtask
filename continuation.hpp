@@ -1,5 +1,5 @@
-#ifndef GPD_SWITCH_HPP
-#define GPD_SWITCH_HPP
+#ifndef GPD_CONTINUATION_HPP
+#define GPD_CONTINUATION_HPP
 #include "continuation_exception.hpp"
 #include "details/continuation_meta.hpp"
 #include "details/continuation_details.hpp"
