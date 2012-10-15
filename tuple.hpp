@@ -13,7 +13,7 @@ template<int> struct placeholder {};
 namespace details {
 
 template<class T, class Disable=void>
-struct pack_arg : identity<T> {};
+struct pack_arg : identity<T&&> {};
 
 template<int I>
 struct pack_arg<placeholder<I>> : identity<placeholder<I>> {};
