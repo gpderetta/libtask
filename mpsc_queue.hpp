@@ -7,7 +7,12 @@
 
 namespace gpd {
 
-// MP-SC queue_base
+/**
+ * Thread safe, Multiple producers single consumer queue, based on an algorithm by
+ * Dmitriy V'yukov/
+ *
+ * Untyped variant.
+ **/
 struct mpsc_queue_base
 {
     mpsc_queue_base()  
@@ -56,6 +61,14 @@ struct mpsc_queue_base
     node           m_tail;
 };
 
+/**
+ * Thread safe, Multiple producers single consumer queue, based on an algorithm by
+ * Dmitriy V'yukov/
+ *
+ * Generic type safe variant.
+ *
+ * Node must be derived from gpd::node.
+ **/
 template<class Node>
 struct mpsc_queue : mpsc_queue_base{
     mpsc_queue() : mpsc_queue_base() {}

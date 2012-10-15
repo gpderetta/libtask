@@ -58,7 +58,12 @@ auto replacer(Pack&& p) ->
 { return { std::forward<Pack>(p) }; }
  
 }
-   
+
+
+/**
+ * Invoke k-ary callable object 'f' passing the splat'd n-tuple 'tuple' as
+ * the first n arguments and 'args...' as the remaining k-n.
+ */   
 template <class F, class Tuple, class... Args>
 auto forward(F&& f, Tuple&& tuple, Args&&... args)
     as ( details::forward0(std::forward<F>(f), 
@@ -66,12 +71,21 @@ auto forward(F&& f, Tuple&& tuple, Args&&... args)
                            std::forward<Tuple>(tuple), 
                            std::forward<Args>(args)...) ) ;
 
+/**
+ * Returns the tuple resuting by applying function 'f' to each
+ * elelemtn of tuple 't'.
+ */
 template<class F, class Tuple>
 auto transform(F&& f, Tuple&& t) 
     as( details::transform0(std::forward<F>(f), 
                             details::indices(t), 
                             std::forward<Tuple>(t)) );
 
+/**
+ * Return the tuple resulting by replacing every argument of type
+ * placeholder<N> in 'closure' with the N'th element of argument pack
+ * args.
+ */
 template<class Tuple, class ...Args>
 auto replace_placeholders(Tuple&& closure, Args&&... args) 
     as( transform(details::replacer(pack(std::forward<Args>(args)...)), 
@@ -99,6 +113,9 @@ auto binder(F&& f, Closure&& closure) -> binder_t<F, Closure> {
 
 }
 
+/**
+ * Similar to std::bind, except that does not special case nested binds.
+ */
 template<class F, class... Args>
 auto bind(F&& f,  Args&&... args) 
     as( details::binder(std::forward<F>(f),

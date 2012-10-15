@@ -19,22 +19,33 @@ inline long sys_futex(void *addr1, int op, int val1,
 }
 }
 
-/*
-struct {
-    time_t  tv_sec    seconds
-    long    tv_nsec   nanoseconds
-    };*/
-
-
+/**
+ * A futex + atomic<int> in a user friendlier package.
+ */
 class futex : atomic<int> {
     enum wait_result { woken = 0 , timeout = ETIMEOUT, 
                        wouldblock = EWOULDBLOCK, interrupted = EINTR };
+    
+    /**
+     * Block the current thread unless the associated atomic int is
+     * different from 'value'.  
+     * 
+     * NOTE: there is no guarantee that after wait returns the atomic
+     * int will be equal to 'value'
+     */
     wait_result
     wait(int value) {
         int ret = details::sys_futex(this, FUTEX_WAIT_PRIVATE, value, 0, 0, 0);
         assert(ret != -1);
         return wait_result(ret);
     }
+
+    /**
+     * Block untill the associated atomic int is different from
+     * 'value' or the time delay 't' has expired.
+     *
+     * NOTE: see the note for unary wait.
+     */
     wait_result 
     wait(int value, timespec t) {
         int ret = details::sys_futex(this, FUTEX_WAIT_PRIVATE, value, &t, 0, 0);
@@ -42,6 +53,11 @@ class futex : atomic<int> {
         return wait_result(ret);
     }
 
+    /**
+     * Wake up to 'n' waiters of this futex.
+     *
+     * For n == INT_MAX (the default), wake all waiters.
+     */ 
     int signal(int n = INT_MAX) {
         int ret = details::sys_futex(this, FUTEX_WAKE_PRIVATE, value, 0, 0, 0);
         assert(ret != -1);

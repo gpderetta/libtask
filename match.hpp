@@ -25,13 +25,18 @@ template<class... F>
 struct xoverload_set 
     : xoverload<F...>
 {
-    //using F::operator()...;
     xoverload_set(F... f)
         : xoverload<F...>(f...)
     {}
 };
 
 }
+
+/**
+ * Returns a polymorphic callable created by the composition of all
+ * callables in argument pack 'f'
+ *
+ **/
 template<class... F>
 details::xoverload_set<F...> 
 match(F... f) {
