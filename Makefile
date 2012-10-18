@@ -20,6 +20,9 @@ TESTS=match_test\
 	future_test \
 	asio_test \
 	signature_test \
+	pipe_test \
+
+pipe_test_LIBS=boost_regex
 
 swarm_SOURCES=		\
 	swarm.cc\
