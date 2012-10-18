@@ -8,9 +8,10 @@
 #include <boost/algorithm/string/case_conv.hpp>
 int square(int x) { return x*x; };
 
-
 int main() {
     using gpd::stage; using gpd::proc;
+    using gpd::ipipe; using gpd::opipe;
+
     {
         auto ret = 10 | stage(square) ;
         assert(ret == 100);
@@ -45,7 +46,7 @@ int main() {
 
         auto ret 
             = x       
-            | proc([](gpd::continuation<void(int)> output,
+            | proc([](opipe<int> output,
                       std::vector<int> input) { 
                        for(auto& x : input) output(x*2);
                        return output;
@@ -53,6 +54,27 @@ int main() {
             ;
         
         std::vector<int> exp_y {2,4,6};
+        std::vector<int> y(begin(ret), end(ret));
+        assert(y == exp_y);
+    }
+    {
+        std::vector<int> x {1,2,3};
+        auto ret 
+            = x       
+            | proc([](opipe<int> output,
+                      std::vector<int> input) { 
+                       for(auto& x : input) output(x*2);
+                       return output;
+                   }) 
+            | proc([](opipe<int> output,
+                      ipipe<int> input) { 
+                       for(auto x : input) output(x*3);
+                       return output;
+                   })
+            ;
+
+        
+        std::vector<int> exp_y {6,12,18};
         std::vector<int> y(begin(ret), end(ret));
         assert(y == exp_y);
     }
@@ -81,7 +103,7 @@ int main() {
         std::string x = "Hello tHis is a Long string with Some capitalized woRds and sOme iN cAmmel Case";
         auto ret 
             = x       
-            | proc([](gpd::continuation<void(std::string&&)> output,
+            | proc([](opipe<std::string&&> output,
                       std::string&& input) { 
                        boost::regex r("([A-Za-z]+)");
                        boost::sregex_token_iterator b(input.begin(),
@@ -89,8 +111,8 @@ int main() {
                        std::move(b, e, begin(output));
                        return output;
                    }) 
-            | proc([](gpd::continuation<void(std::string&&)> output,
-                      gpd::continuation<std::string&&()>      input) { 
+            | proc([](opipe<std::string&&> output,
+                      ipipe<std::string&&> input) { 
                        boost::regex r("^[A-Z].*");
                        for(auto&& x: input) {
                            if(!boost::regex_match(x, r))
@@ -98,8 +120,8 @@ int main() {
                        }
                        return output;
                    }) 
-            | proc([](gpd::continuation<void(std::string)> output,
-                      gpd::continuation<std::string&&()> input) { 
+            | proc([](opipe<std::string&&> output,
+                      ipipe<std::string&&> input) { 
                        for(auto x : input) {
                            output("\""+boost::algorithm::to_upper_copy(x)+"\" ");
                            output("\""+boost::algorithm::to_lower_copy(x)+"\" ");

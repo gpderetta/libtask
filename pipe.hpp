@@ -31,6 +31,44 @@ struct proc_impl {
 
 }
 
+template<class T>
+struct opipe : continuation<void(T)> {
+    typedef continuation<void(T)> _base;
+    opipe(opipe&&) = default;
+    opipe(_base rhs) : _base(std::move(rhs)) {}
+    opipe& operator=(_base rhs) { 
+        _base(*this)=std::move(rhs);
+        return *this;
+    }
+};
+
+// TODO: The preferred syntax to declare {,i,o}pipe would be:
+// template<class T>
+// using opipe = continuation<void(T)>;
+
+
+template<class T>
+struct ipipe : continuation<T()> {
+    typedef continuation<T()> _base;
+    ipipe(ipipe&&) = default;
+    ipipe(_base rhs) : _base(std::move(rhs)) {}
+    ipipe& operator=(_base rhs) { 
+        _base(*this)=std::move(rhs);
+        return *this;
+    }
+};
+
+template<class T, class T2=T>
+struct pipe : continuation<T(T2)> {
+    typedef continuation<T(T2)> _base;
+    pipe(pipe&&) = default;
+    pipe(_base rhs) : _base(std::move(rhs)) {}
+    pipe& operator=(_base rhs) { 
+        _base(*this)=std::move(rhs);
+        return *this;
+    }
+};
+
 
 
 template<class F, class... Args>
