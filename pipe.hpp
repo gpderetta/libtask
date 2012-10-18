@@ -23,7 +23,7 @@ pipeable<F> make_pipeable(F&& f) { return {std::forward<F>(f)}; }
 template<class Arg, class F>
 auto operator|(Arg&& x, details::pipeable<F>&& f) as (f(std::forward<Arg>(x)));
 
-struct proc_impl {
+struct plumb_impl {
     template<class... Args>
     auto operator()(Args&&... args) const 
         as (gpd::callcc(std::forward<Args>(args)...));    
@@ -78,9 +78,9 @@ auto stage(F f, Args&&... args) as
 
 
 template<class... Args>
-auto proc(Args&&... args) as 
+auto plumb(Args&&... args) as 
         (details::make_pipeable
-         (gpd::bind(details::proc_impl(), std::forward<Args>(args)..., 
+         (gpd::bind(details::plumb_impl(), std::forward<Args>(args)..., 
                     gpd::placeholder<0>())));    
     
 
