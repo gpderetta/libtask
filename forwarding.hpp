@@ -94,10 +94,10 @@ auto replace_placeholders(Tuple&& closure, Args&&... args)
 namespace details {
 template<class F, class Closure>
 struct binder_t {
-    F f; Closure closure;
+    typename std::remove_reference<F>::type f; Closure closure;
 
     binder_t(F&& f, Closure&& closure)
-        : f(std::move(f)), closure(std::move(closure)) {}
+        : f(std::move(f)), closure(std::forward<Closure>(closure)) {}
 
     template<class... Args>
     auto operator()(Args&&... args)
