@@ -13,7 +13,7 @@ template<int i>
 struct quoted_op;
 
 #define GPD_QUOTE_binops                                \
-    (||)(&&)(/)(%)(|)(^)(<<)(>>)(<)(>)(=)               \
+    (||)(&&)(/)(%)(|)(^)(<<)(>>)(<)(>)(=)(->*)          \
         (==)(<=)(>=)(!=)(*=)(/=)(+=)(-=)(&=)(^=)(|=)    \
     /**/
         
@@ -22,7 +22,7 @@ struct quoted_op;
 
 struct quote_probe {
     void operator[](quote_probe) {}
-
+    void operator()(quote_probe) {}
 #define GPD_QUOTE_binop_expand(r, data, op) \
     void operator op (quote_probe) {}
 BOOST_PP_SEQ_FOR_EACH(GPD_QUOTE_binop_expand, ~, 
@@ -72,7 +72,14 @@ template<>                                                              \
 struct binary::apply<&quote_probe::operator [] > {                      \
     template<class Lhs, class Rhs>                                      \
     constexpr auto operator()(Lhs&& lhs, Rhs&& rhs)                     \
-        as(lhs[std::forward<Rhs>(rhs)]);                               \
+        as(std::forward<Lhs>(lhs)[std::forward<Rhs>(rhs)]);             \
+};                                                                      \
+
+template<>                                                              \
+struct binary::apply<&quote_probe::operator () > {                      \
+    template<class F, class... Args>                                     \
+    constexpr auto operator()(F&& f, Args&&... args)                     \
+        as(std::forward<F>(f)(std::forward<Args>(args)...));            \
 };                                                                      \
 
 

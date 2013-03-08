@@ -148,6 +148,8 @@ int main() {
                        std::back_inserter(out),
                        $([]));
         assert(expected == out);
+        X x { 42 };
+        assert($(())($foo, x) ==  42);
     }
 
 }
