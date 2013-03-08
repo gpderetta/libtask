@@ -21,6 +21,7 @@ TESTS=match_test\
 	asio_test \
 	signature_test \
 	pipe_test \
+	quote_test \
 
 pipe_test_LIBS=boost_regex
 
