@@ -2,6 +2,9 @@
 #include <cassert>
 #include <vector>
 #include <algorithm>
+#include <numeric>
+#include <utility>
+#include <array>
 struct X {
     int foo;
 };
@@ -104,7 +107,47 @@ int main() {
                        std::back_inserter(out),
                        $second);
         assert(expected == out);
+    }
+    {
+        std::vector<int> in { 0, 0, 0, 0, 0 };
+        std::vector<int> expected { 3, 3, 3, 3, 3 };
 
+        using namespace std::placeholders;
+        std::for_each(in.begin(), 
+                      in.end(), 
+                      std::bind($(=), _1, 3));
+        assert(expected == in);
+    }
+
+    {
+        int i = 42;
+        assert($(+)(5, 3) == 8);
+        assert($(*)(5, 3) == 15);
+        assert($(*)(&i) == 42);
+        assert($(<)(0,1) == true);
+        assert($(!)(false) == true);
+        assert($(++)(i) == 43);
+    }
+    {
+        std::vector<int> v = { 0, 1, 2, 3 };
+        int i = std::accumulate(v.begin(), v.end(), 0, $(+));
+        assert(i == 6);
+    }
+    {
+        std::vector<std::array<int, 4> > in {
+            {{1, 2, 3, 4 }},
+            {{2, 4, 6, 8 }}, 
+            {{3, 6, 9, 12 }},
+            {{4, 8, 16, 32}} };
+        std::vector<int> indices = { 0, 1, 2, 3 };
+        std::vector<int> out;
+        std::vector<int> expected = { 1, 4, 9, 32 };
+        std::transform(in.begin(), 
+                       in.end(), 
+                       indices.begin(), 
+                       std::back_inserter(out),
+                       $([]));
+        assert(expected == out);
     }
 
 }
