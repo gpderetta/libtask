@@ -52,6 +52,8 @@ private:
 
     std::exception_ptr ptr;
 
+     abnormal_exit_exception(gpd::abnormal_exit_exception&&) = default;
+
      /**
       * Construct an exit_exception from a continuation that will be
       * transported. Also capture the current pending exception by
