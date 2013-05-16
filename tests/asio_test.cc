@@ -1,3 +1,8 @@
+#include <valgrind/drd.h>
+#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_BEFORE(addr) ANNOTATE_HAPPENS_BEFORE(addr)
+#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_AFTER(addr) ANNOTATE_HAPPENS_AFTER(addr)
+#define _GLIBCXX_EXTERN_TEMPLATE -1
+#include <atomic>
 #include <vector>
 #include <functional>
 #include <boost/shared_ptr.hpp>
@@ -5,6 +10,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/lexical_cast.hpp>
+#include <thread>
 #include "continuation.hpp" 
 #include "future.hpp"
 typedef boost::asio::ip::tcp::acceptor acceptor_type;
@@ -22,20 +28,21 @@ void frob(char * begin, size_t len) {
 
 typedef gpd::continuation<void(void)> thread_type;
 
+
+
 typedef boost::system::error_code error_type;
 thread_type thread(thread_type scheduler,
             acceptor_type* acceptor,
             endpoint_type* endpoint,
             int counter, int token_size){
-    // std::cout<<"running\n";
     boost::shared_ptr<char> token_(new char[token_size]);
     char * token = token_.get();
     for(int i=0; i<token_size; i++) token[i] = 0;
     boost::asio::ip::tcp::socket sink(demuxer);
     boost::asio::ip::tcp::socket source(demuxer);
 
-    gpd::future<error_type> accept_error;
-    gpd::future<error_type> connect_error;
+    gpd::latch<error_type> accept_error;
+    gpd::latch<error_type> connect_error;
 
     acceptor->async_accept(sink,
                            accept_error.promise());
@@ -49,8 +56,9 @@ thread_type thread(thread_type scheduler,
     assert(accept_error);
  
 
-    gpd::future<std::tuple<error_type, std::size_t> > read_error;
-    gpd::future<std::tuple<error_type, std::size_t> > write_error;
+    struct err { error_type error;  std::size_t len; };
+    gpd::future<err> read_error, write_error;
+
     boost::asio::async_read(source,
                             boost::asio::buffer(token, token_size),
                             read_error.promise());
@@ -60,11 +68,16 @@ thread_type thread(thread_type scheduler,
                              write_error.promise());
 
     while(counter) {
+
         if(write_error) {
-            if(std::get<0>(*write_error)) {
+            if(write_error->error){
+                std::cerr << "write error, \"" << boost::system::system_category().message(write_error->error.value()) << "\", count="<<counter <<"\n";
+                write_error.reset();
+
                 break;
             }
             write_error.reset();
+
             frob(token, token_size);
             boost::asio::async_write(sink,
                                      boost::asio::buffer(token, token_size),
@@ -74,7 +87,9 @@ thread_type thread(thread_type scheduler,
         }
  
         if(read_error) {
-            if(std::get<0>(*read_error)) {
+            if(read_error->error) {
+                read_error.reset();
+                std::cerr << "read error, count="<<counter <<"\n";
                 break;
             }
 
@@ -84,7 +99,7 @@ thread_type thread(thread_type scheduler,
                                     read_error.promise());
         }
  
-        assert(!(read_error || write_error));
+
         gpd::wait_any(scheduler, read_error, write_error);
     }
    
@@ -99,9 +114,9 @@ typedef std::vector< endpoint_type > endpoint_vector_type;
 
 int main(int argc, char** argv) {
     int count = ((argc >= 2) ? boost::lexical_cast<int>(argv[1]): 10);
-    int count_2 = ((argc >= 3) ? boost::lexical_cast<int>(argv[2]): 1);
+    int count_2 = ((argc >= 3) ? boost::lexical_cast<int>(argv[2]): 2);
     int base_port = ((argc >= 4) ? boost::lexical_cast<int>(argv[3]): 30000);
-    int token_size = ((argc == 5) ? boost::lexical_cast<int>(argv[4]): 4096);
+    int token_size = ((argc == 5) ? boost::lexical_cast<int>(argv[4]): 4096);;
 
     acceptor_vector_type acceptor_vector;
     endpoint_vector_type endpoint_vector;
@@ -143,6 +158,14 @@ int main(int argc, char** argv) {
                        count, token_size);
             });
     }
-    demuxer.run();
+    
+    std::vector<std::thread> v;
+    for(int i = 0; i < 100; ++i) 
+        v.push_back(std::thread([] {
+                    demuxer.run();
+                }));
+
+    for (auto& t: v) t.join();
+
 }
  
