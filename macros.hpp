@@ -20,7 +20,7 @@
  * my_function is a function that returns the result of <expression>.
  **/
 #define as(...)                               \
-    -> decltype(__VA_ARGS__) { return __VA_ARGS__ ; }  \
+    -> decltype((__VA_ARGS__)) { return __VA_ARGS__ ; } \
 /**/
 
 /**
