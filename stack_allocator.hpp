@@ -7,7 +7,7 @@
 
 namespace gpd {
 struct static_stack_allocator {
-    enum { stack_size = 1024*1024 };
+    enum { stack_size = 1024*1024*1024 };
     static const size_t alignment = 16;
 
     static void * allocate(size_t size) {
