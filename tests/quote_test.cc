@@ -36,7 +36,7 @@ void foo(X, int){}
 quotable(foo);
 quotable(first);
 quotable(second);
-
+quotable(transform)
 int main() {
     {
         X x{ 0 };
@@ -150,6 +150,16 @@ int main() {
         assert(expected == out);
         X x { 42 };
         assert($(())($foo, x) ==  42);
+    }
+    {
+        std::vector<std::pair<int, int> > in { {0, 0}, {1,-1 }, {2, -2}, {3,-3} };
+        std::vector<int> out;
+        std::vector<int> expected = { 0, -1, -2, -3 };
+        $transform(in.begin(), 
+                   in.end(), 
+                   std::back_inserter(out),
+                   $second);
+        assert(expected == out);
     }
 
 }
