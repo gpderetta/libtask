@@ -9,7 +9,7 @@ BIN_DIR=bin
 TEST_BIN:=$(addprefix $(BIN_DIR)/,$(TESTS))
 PROGRAM_BIN:=$(addprefix $(BIN_DIR)/,$(PROGRAMS))
 
-SUPPRESS=1
+#SUPPRESS?=1
 
 ifeq ($(TERM),dumb) 
 msg_header="[%s] %-30s"
