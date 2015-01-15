@@ -26,8 +26,8 @@ define TEST_template
 $(2)_OBJS=$(OBJ_DIR)/$(1).o
 $(2)_DEPS=$(DEP_DIR)/$(1).d
 
-$$($(2)_OBJS): $(OBJ_DIR)/%.o: $(TST_DIR)/%.cc
-$$($(2)_DEPS): $(DEP_DIR)/%.d: $(TST_DIR)/%.cc
+$$($(2)_OBJS): $(OBJ_DIR)/%.o: $(TST_DIR)/%.cpp
+$$($(2)_DEPS): $(DEP_DIR)/%.d: $(TST_DIR)/%.cpp
 $(BIN_DIR)/$(1): LDFLAGS+=$$($(2)_LIBS:%=-l%)
 $(BIN_DIR)/$(1): $$($(2)_OBJS)
 
@@ -40,12 +40,12 @@ ifndef $(2)_SOURCES
 	$(2)_OBJS=$(OBJ_DIR)/$(1).o
 	$(2)_DEPS=$(DEP_DIR)/$(1).d
 else
-	$(2)_OBJS=$($(2)_SOURCES:%.cc=$(OBJ_DIR)/%.o) #$(OBJ_DIR)/$(1).o
-	$(2)_DEPS=$($(2)_SOURCES:%.cc=$(DEP_DIR)/%.d) #$(DEP_DIR)/$(1).d
+	$(2)_OBJS=$($(2)_SOURCES:%.cpp=$(OBJ_DIR)/%.o) #$(OBJ_DIR)/$(1).o
+	$(2)_DEPS=$($(2)_SOURCES:%.cpp=$(DEP_DIR)/%.d) #$(DEP_DIR)/$(1).d
 endif
 
-$$($(2)_OBJS): $(OBJ_DIR)/%.o: %.cc
-$$($(2)_DEPS): $(DEP_DIR)/%.d: %.cc
+$$($(2)_OBJS): $(OBJ_DIR)/%.o: %.cpp
+$$($(2)_DEPS): $(DEP_DIR)/%.d: %.cpp
 $(BIN_DIR)/$(1): $$($(2)_OBJS)
 $(BIN_DIR)/$(1): LDFLAGS+=$$($(2)_LIBS:%=-l%)
 $(1): $(BIN_DIR)/$(1)
@@ -54,8 +54,8 @@ ALL_DEPS += $$($(2)_DEPS)
 endef
 
 define LIBRARY_template
-$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
-$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+$(2)_OBJS=$($(2)_SOURCES:%.cpp=%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cpp=%.d)
 
 $(1:%=%.so): CPPFLAGS += -fPIC
 $(1:%=%.so): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
@@ -65,8 +65,8 @@ ALL_DEPS += $$($(2)_DEPS)
 endef
 
 define STATIC_LIBRARY_template
-$(2)_OBJS=$($(2)_SOURCES:%.cc=%.o)
-$(2)_DEPS=$($(2)_SOURCES:%.cc=%.d)
+$(2)_OBJS=$($(2)_SOURCES:%.cpp=%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cpp=%.d)
 
 $(1:%=%.a): CPPFLAGS += 
 $(1:%=%.a): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)

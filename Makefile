@@ -1,6 +1,6 @@
 FEATURE_FLAGS= --std=c++11
 #DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
-DEVEL_FLAGS= -W -Wall -O3 -march=native  -fopenmp -g -DNDEBUG -msse4.2
+DEVEL_FLAGS= -W -Wall -g  -fopenmp -g -msse4.2
 
 SUPPRESS=1
 INCLUDE=-I.
@@ -30,10 +30,10 @@ benchmark_test_LIBS=boost_timer\
 	boost_system
 
 swarm_SOURCES=		\
-	swarm.cc\
-	particle.cc\
-	gl.cc\
-	controls.cc\
+	swarm.cpp\
+	particle.cpp\
+	gl.cpp\
+	controls.cpp\
 
 swarm_LIBS=	\
 	GL\
@@ -41,8 +41,9 @@ swarm_LIBS=	\
 
 asio_test_LIBS=$(BOOST_SYS_LIB)
 
+#.PHONY
+tests: $(TESTS)
 
 include Makefile.common
-
 
 
