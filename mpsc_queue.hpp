@@ -3,10 +3,12 @@
 #include <utility>
 #include "xassert.hpp"
 #include "node.hpp"
-#include "atomic.hpp"
+#include <atomic>
 
 namespace gpd {
 
+
+typedef char padding_t[64];
 /**
  * Thread safe, Multiple producers single consumer queue, based on an algorithm by
  * Dmitriy V'yukov/
@@ -21,43 +23,45 @@ struct mpsc_queue_base
     {}
 
     void push(node* n) {
-        n->m_next.store(0, memory_order_relaxed);
+        n->m_next.store(0, std::memory_order_relaxed);
         node* prev = m_head.exchange(n);
         XASSERT(prev);
-        store_release(prev->m_next, n);
+        prev->m_next.store(n, std::memory_order_release);
     }
 
     node* pop()  {
 
-        node* tail = load_acquire(m_tail.m_next);
+        node* tail = m_tail.m_next.load(std::memory_order_acquire);
         if (0 == tail)
             return 0;
-        node* next = load_acquire(tail->m_next);
+
+        node* next = tail->m_next.load(std::memory_order_acquire);
 
         if (next) {
-            store_release(m_tail.m_next, next);
+            m_tail.m_next.store(next, std::memory_order_relaxed);
             return tail;
         }
 
-        node* head = load_acquire(m_head);
+        node* head = m_head.load(std::memory_order_acquire);
 
         if (tail != head)
             return 0;
-        store_release(m_tail.m_next, (node*)0);
+        m_tail.m_next.store(0, std::memory_order_release);
 
         if (m_head.compare_exchange_strong(head,  &m_tail))  {
             return tail;
         }
 
-        next = load_acquire(tail->m_next);
+        next = tail->m_next.load(std::memory_order_acquire);
         if (next) {
-            store_release(m_tail.m_next, next);
+            m_tail.m_next.store(next, std::memory_order_release);
             return tail;
         }
         return 0;
     } 
 
-    atomic<node*>  m_head;
+    std::atomic<node*>  m_head;
+    padding_t _;
     node           m_tail;
 };
 
@@ -70,7 +74,7 @@ struct mpsc_queue_base
  * Node must be derived from gpd::node.
  **/
 template<class Node>
-struct mpsc_queue : mpsc_queue_base{
+struct mpsc_queue : mpsc_queue_base {
     mpsc_queue() : mpsc_queue_base() {}
 
     typedef Node node;
