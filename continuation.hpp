@@ -198,6 +198,11 @@ struct continuation<Result(Args...)> {
         assert(empty());
     }
 
+    friend std::size_t hash(const continuation& x)
+    {
+        return (reinterpret_cast<std::size_t>(x.sp) >> 10);
+    }
+
 private:
     /** 
      * Returns the internal switch_pair object, leaving the current
