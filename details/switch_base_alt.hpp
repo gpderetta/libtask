@@ -10,7 +10,7 @@ typedef void* parm_t;
 
 struct cont { 
     void * rsp; 
-    explicit operator bool() const { return sp;}
+    explicit operator bool() const { return rsp;}
 };
 
 void * stack_bottom(void * vp, size_t size) {
