@@ -33,13 +33,16 @@ typedef switch_pair trampoline_t(parm_t parm, cont calling_continuation);
     "pushq %r13            \n\t"                \
     "pushq %r14            \n\t"                \
     "pushq %r15            \n\t"                \
+    "pushq %rbp            \n\t"                \
 /**/
 #define GPD_RESTORE_REGISTERS                   \
+    "popq %rbp             \n\t"                \
     "popq %r15             \n\t"                \
     "popq %r14             \n\t"                \
     "popq %r13             \n\t"                \
     "popq %r12             \n\t"                \
     "popq %rbx             \n\t"                \
+
 /**/
 
 extern "C"
@@ -51,13 +54,11 @@ asm volatile (
     ".type stack_switch_impl, @function \n\t"            
     ".align 16                     \n\t"                           
     "stack_switch_impl:            \n\t"         
-    "pushq %rbp            \n\t"
     GPD_SAVE_REGISTERS
     "movq %rsi, %rdx       \n\t"  // parm-> switch_pair::parm
     "movq %rsp, %rax       \n\t"  // rsp -> switch_pair::sp
     "movq %rdi, %rsp       \n\t"  // sp  -> rsp
     GPD_RESTORE_REGISTERS
-    "popq %rbp             \n\t"
     "popq %rdi             \n\t"
     "jmp *%rdi             \n\t"  // jump to ret address
     );
@@ -71,13 +72,11 @@ asm volatile (
     ".type execute_into_impl, @function \n\t"            
     ".align 16                     \n\t"                           
     "execute_into_impl:            \n\t"                
-    "pushq %rbp            \n\t"
     GPD_SAVE_REGISTERS
     "movq %rsp, %rbx       \n\t"
     "movq %rsi, %rsp       \n\t" 
     "movq %rbx, %rsi       \n\t"
     GPD_RESTORE_REGISTERS
-    "popq %rbp             \n\t"
     "jmp *%rdx             \n\t"  //tail call (rdi is passed through)
     );  
 
