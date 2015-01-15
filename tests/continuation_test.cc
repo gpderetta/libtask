@@ -312,7 +312,7 @@ int main() {
                     try {
                         c();  
                         assert(false && "unreachable");
-                    } catch(...) {
+                    } catch(std::exception&) {
                         caught++;
                         throw;
                     }
@@ -381,7 +381,7 @@ int main() {
                 assert(i == 42);
                 try {
                     c1();
-                } catch(continuation<float()>&& c2) {
+                } catch(continuation<float()>& c2) {
                     assert(!c1);
                     float f = c2().get();
                     assert(f == 42);
