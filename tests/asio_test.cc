@@ -1,7 +1,7 @@
-#include <valgrind/drd.h>
-#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_BEFORE(addr) ANNOTATE_HAPPENS_BEFORE(addr)
-#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_AFTER(addr) ANNOTATE_HAPPENS_AFTER(addr)
-#define _GLIBCXX_EXTERN_TEMPLATE -1
+// #include <valgrind/drd.h>
+// #define _GLIBCXX_SYNCHRONIZATION_HAPPENS_BEFORE(addr) ANNOTATE_HAPPENS_BEFORE(addr)
+// #define _GLIBCXX_SYNCHRONIZATION_HAPPENS_AFTER(addr) ANNOTATE_HAPPENS_AFTER(addr)
+// #define _GLIBCXX_EXTERN_TEMPLATE -1 
 #include <atomic>
 #include <vector>
 #include <functional>
@@ -11,6 +11,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/lexical_cast.hpp>
 #include <thread>
+#include <iostream>
 #include "continuation.hpp" 
 #include "future.hpp"
 typedef boost::asio::ip::tcp::acceptor acceptor_type;
