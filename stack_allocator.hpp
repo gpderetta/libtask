@@ -10,7 +10,7 @@ struct static_stack_allocator {
     enum { stack_size = 1024*1024*1024 };
     static const size_t alignment = 16;
 
-    static void * allocate(size_t size) {
+    static void * allocate(size_t size = stack_size) {
         void * result = 0;
         int ret = ::posix_memalign(&result, alignment, size);
         assert(ret != EINVAL);
