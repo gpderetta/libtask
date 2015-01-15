@@ -23,8 +23,11 @@ TESTS=match_test\
 	signature_test \
 	pipe_test \
 	quote_test \
+	benchmark_test\
 
 pipe_test_LIBS=boost_regex
+benchmark_test_LIBS=boost_timer\
+	boost_system
 
 swarm_SOURCES=		\
 	swarm.cc\
