@@ -1,9 +1,10 @@
-FEATURE_FLAGS= --std=c++0x
-DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
+FEATURE_FLAGS= --std=c++11
+#DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
+DEVEL_FLAGS= -W -Wall -O3 -march=native  -fopenmp -g -DNDEBUG -msse4.2
 
 SUPPRESS=1
 INCLUDE=-I.
-CXX=g++-4.7
+CXX=g++-4.9
 CPPFLAGS=  $(INCLUDE) 
 CXXFLAGS ?= $(FEATURE_FLAGS) $(DEVEL_FLAGS)
 LDFLAGS=       `sdl-config --cflags --libs`
