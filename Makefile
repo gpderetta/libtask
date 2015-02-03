@@ -1,4 +1,4 @@
-FEATURE_FLAGS= --std=c++11
+FEATURE_FLAGS= --std=c++14
 #DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
 DEVEL_FLAGS= -W -Wall -g  -fopenmp -g -msse4.2
 
