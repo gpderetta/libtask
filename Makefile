@@ -13,6 +13,7 @@ BOOST_PO_LIB=boost_program_options
 BOOST_SYS_LIB=boost_system
 
 PROGRAMS=swarm
+STATIC_LIBRARIES=libevent 
 
 TESTS=match_test\
 	continuation_test \
@@ -28,6 +29,9 @@ TESTS=match_test\
 pipe_test_LIBS=boost_regex
 benchmark_test_LIBS=boost_timer\
 	boost_system
+
+libevent_SOURCES=\
+	event.cpp\
 
 swarm_SOURCES=		\
 	swarm.cpp\
