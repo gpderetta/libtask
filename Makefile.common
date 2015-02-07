@@ -1,11 +1,13 @@
+# this is a -*-makefile-*-
+
 .PHONY: clean all test run-test
-all: $(PROGRAMS) $(LIBRARIES:%=%.so) $(STATIC_LIBRARIES:%=%.a)
+all: $(PROGRAMS) $(TESTS) $(LIBRARIES) $(STATIC_LIBRARIES)
 
 OBJ_DIR=objs
 DEP_DIR=deps
 TST_DIR=tests
 BIN_DIR=bin
-
+LIB_DIR=libs
 TEST_BIN:=$(addprefix $(BIN_DIR)/,$(TESTS))
 PROGRAM_BIN:=$(addprefix $(BIN_DIR)/,$(PROGRAMS))
 
@@ -28,7 +30,9 @@ $(2)_DEPS=$(DEP_DIR)/$(1).d
 
 $$($(2)_OBJS): $(OBJ_DIR)/%.o: $(TST_DIR)/%.cpp
 $$($(2)_DEPS): $(DEP_DIR)/%.d: $(TST_DIR)/%.cpp
-$(BIN_DIR)/$(1): LDFLAGS+=$$($(2)_LIBS:%=-l%)
+
+$(BIN_DIR)/$(1): LDFLAGS+=-L$(LIB_DIR) $$($(2)_LIBS:%=-l%) 
+$(BIN_DIR)/$(1): $(filter $(STATIC_LIBRARIES:%=$(LIB_DIR)/%.a),$($(2)_LIBS:%=$(LIB_DIR)/lib%.a))
 $(BIN_DIR)/$(1): $$($(2)_OBJS)
 
 ALL_OBJS += $$($(2)_OBJS)
@@ -40,56 +44,69 @@ ifndef $(2)_SOURCES
 	$(2)_OBJS=$(OBJ_DIR)/$(1).o
 	$(2)_DEPS=$(DEP_DIR)/$(1).d
 else
-	$(2)_OBJS=$($(2)_SOURCES:%.cpp=$(OBJ_DIR)/%.o) #$(OBJ_DIR)/$(1).o
-	$(2)_DEPS=$($(2)_SOURCES:%.cpp=$(DEP_DIR)/%.d) #$(DEP_DIR)/$(1).d
+	$(2)_OBJS=$($(2)_SOURCES:%.cpp=$(OBJ_DIR)/%.o) 
+	$(2)_DEPS=$($(2)_SOURCES:%.cpp=$(DEP_DIR)/%.d) 
 endif
 
 $$($(2)_OBJS): $(OBJ_DIR)/%.o: %.cpp
 $$($(2)_DEPS): $(DEP_DIR)/%.d: %.cpp
 $(BIN_DIR)/$(1): $$($(2)_OBJS)
-$(BIN_DIR)/$(1): LDFLAGS+=$$($(2)_LIBS:%=-l%)
-$(1): $(BIN_DIR)/$(1)
+$(BIN_DIR)/$(1): $(filter $(STATIC_LIBRARIES),$($(2)_LIBS:%=lib%))
+$(BIN_DIR)/$(1): LDFLAGS+=-L$(LIB_DIR) $$($(2)_LIBS:%=-l%) 
 ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
 
 define LIBRARY_template
-$(2)_OBJS=$($(2)_SOURCES:%.cpp=%.o)
-$(2)_DEPS=$($(2)_SOURCES:%.cpp=%.d)
+$(2)_OBJS=$($(2)_SOURCES:%.cpp=$(OBJ_DIR)/%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cpp=$(DEP_DIR)/%.d)
 
-$(1:%=%.so): CPPFLAGS += -fPIC
-$(1:%=%.so): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
+$$($(2)_OBJS): $(OBJ_DIR)/%.o: %.cpp
+$$($(2)_DEPS): $(DEP_DIR)/%.d: %.cpp
 
+$(LIB_DIR)/$(1:%=%.so): CXXFLAGS += -fPIC
+$(LIB_DIR)/$(1:%=%.so): LDFLAGS+=$$($(2)_LIBS:%=-l%)
+$(LIB_DIR)/$(1:%=%.so): $$($(2)_OBJS)
 ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
 
 define STATIC_LIBRARY_template
-$(2)_OBJS=$($(2)_SOURCES:%.cpp=%.o)
-$(2)_DEPS=$($(2)_SOURCES:%.cpp=%.d)
+$(2)_OBJS=$($(2)_SOURCES:%.cpp=$(OBJ_DIR)/%.o)
+$(2)_DEPS=$($(2)_SOURCES:%.cpp=$(DEP_DIR)/%.d)
 
-$(1:%=%.a): CPPFLAGS += 
-$(1:%=%.a): $$($(2)_OBJS) $$($(2)_LIBS:%=-l%)
+$$($(2)_OBJS): $(OBJ_DIR)/%.o: %.cpp
+$$($(2)_DEPS): $(DEP_DIR)/%.d: %.cpp
 
+$(LIB_DIR)/$(1:%=%.a): CPPFLAGS +=
+$(LIB_DIR)/$(1:%=%.a): LDFLAGS+=$$($(2)_LIBS:%=-l%)
+$(LIB_DIR)/$(1:%=%.a): $$($(2)_OBJS)
 ALL_OBJS += $$($(2)_OBJS)
 ALL_DEPS += $$($(2)_DEPS)
 endef
 
 
 $(foreach prog,$(PROGRAMS),$(eval $(call PROGRAM_template,$(prog),$(subst -,_,$(prog)))))
-$(foreach prog,$(TESTS),$(eval $(call TEST_template,$(prog),$(subst -,_,$(prog)))))
-#$(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
-#$(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
 
-setup-dirs:
+$(foreach test,$(TESTS),$(eval $(call TEST_template,$(test),$(subst -,_,$(test)))))
+
+
+$(foreach lib,$(LIBRARIES),$(eval $(call LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
+
+
+$(foreach lib,$(STATIC_LIBRARIES),$(eval $(call STATIC_LIBRARY_template,$(lib),$(subst -,_,$(lib)))))
+
+
+setup-dirs: $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(LIB_DIR)
 	@[ -e $(BIN_DIR) ] || mkdir $(BIN_DIR);\
 	[ -e $(DEP_DIR) ] || mkdir $(DEP_DIR);\
 	[ -e $(OBJ_DIR) ] || mkdir $(OBJ_DIR);\
+	[ -e $(LIB_DIR) ] || mkdir $(LIB_DIR);\
 
 $(BIN_DIR)/%:
 	@printf $(msg_header) LK $@; \
-	mkdir $(BIN_DIR) 2>/dev/null; \
-	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS) "; \
+	mkdir -p $(BIN_DIR); \
+	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $(filter %.o,$^) $(LDFLAGS) "; \
 	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
 	if $$cmd   ; then \
 		printf $(msg_pass) OK ;\
@@ -99,10 +116,13 @@ $(BIN_DIR)/%:
 		exit 1;\
 	fi ; \
 
-$(PROGRAMS):%: setup-dirs $(BIN_DIR)/%
-	@echo  $@ built
+.PHONY:
+$(PROGRAMS):%: setup-dirs $(BIN_DIR)/% ;
 
-$(LIBRARIES:%=%.so):
+.PHONY:
+$(TESTS):%: setup-dirs $(BIN_DIR)/% ;
+
+$(LIBRARIES:%=$(LIB_DIR)/%.so):
 	@printf $(msg_header) LK $@; \
 	cmd="$(CXX) -shared $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)" ; \
 	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
@@ -114,14 +134,29 @@ $(LIBRARIES:%=%.so):
 		exit 1;\
 	fi ; \
 
-$(STATIC_LIBRARIES:%=%.a):
-	@printf $(msg_header) AR $@; \
-	ar rcs  $@ $^
+.PHONY:
+$(LIBRARIES):%: setup-dirs $(LIB_DIR)/%.so ;
 
+$(STATIC_LIBRARIES:%=$(LIB_DIR)/%.a):
+	@printf $(msg_header) AR $@; \
+	cmd="ar rcs  $@ $^";\
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	if $$cmd   ; then \
+		printf $(msg_pass) OK ;\
+		exit 0;\
+	else 	\
+		printf $(msg_fail) FAIL  ;\
+		exit 1;\
+	fi ; \
+
+.PHONY:
+$(STATIC_LIBRARIES):%:setup-dirs $(LIB_DIR)/%.a ;
 
 %.d:
 	@printf $(msg_header) DP $@; \
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF  $@ $<; \
+	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF  $@ $< "; \
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	$$cmd ; \
 	perl -pi -e 's{^(.*?)\.o[ :]+}{$(OBJ_DIR)/$$1.o $$1.d :}g' $@ ; \
 	if [ $$? -eq 0 ]  ; then \
 		printf $(msg_pass) OK ;\
@@ -149,15 +184,18 @@ clean:
 	rm -f $(ALL_DEPS) \
 	rm -f $(PROGRAM_BIN) \
 	rm -f $(TEST_BIN) \
-	rm -f $(STATIC_LIBRARIES:%=%.a)
+	rm -f $(STATIC_LIBRARIES:%=$(LIB_DIR)/%.a) \
+	rm -f $(LIBRARIES:%=$(LIB_DIR)/%.so)		
 
+.PHONY:
 test : setup-dirs $(TEST_BIN)
 
 
-run-%_test: test
-	@test=$(subst run-,,$@) ;	\
+.PHONY:
+run-%-test: %_test
+	@test=$(BIN_DIR)/$< ;	\
     printf $(msg_header) TT $$test ; \
-	if bin/$$test   ; then \
+	if $$test > /dev/null   ; then \
 		printf $(msg_pass) PASS ;\
 		exit 0;\
 	else 	\
@@ -165,7 +203,8 @@ run-%_test: test
 		exit 1;\
 	fi ; \
 
-run-test: test $(foreach test,$(TESTS),run-$(test))
+.PHONY:
+run-test: $(foreach test,$(TESTS),$(test:%_test=run-%-test))
 
 ifneq "$(MAKECMDGOALS)" "clean"
   -include $(ALL_DEPS)
