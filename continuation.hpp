@@ -131,12 +131,13 @@ struct continuation<Result(Args...)> {
      * flow.
      */
     continuation& operator() (Args... args) {
-        switch_pair cpair = pair;
+        assert(!empty());
+        switch_pair cpair = pilfer();
         std::tuple<Args...> p(std::forward<Args>(args)...);
-        try {
-            pair = stack_switch_impl(cpair.sp, &p); 
-        } catch(...) { pilfer(); throw; }
-        
+        auto new_pair = stack_switch_impl(cpair.sp, &p);
+        assert(empty());
+        pair = new_pair;
+                
         return *this; 
     }
     
