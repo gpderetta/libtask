@@ -17,8 +17,8 @@ void traverse(C& out, int depth)
 
 int main(int argc, char*argv[])
 {
-    if (argc != 2) exit(1);
-    int depth = boost::lexical_cast<int>(std::string(argv[1]));
+    int depth = 
+        argc != 2 ? 10 : boost::lexical_cast<int>(std::string(argv[1]));
 
     for (int i =0; i < 4; ++i)
     {
