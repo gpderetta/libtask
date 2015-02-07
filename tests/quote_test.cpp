@@ -5,6 +5,7 @@
 #include <numeric>
 #include <utility>
 #include <array>
+#include <functional>
 struct X {
     int foo;
 };
