@@ -1,16 +1,17 @@
 #include "future.hpp"
+#include "task_waiter.hpp"
 #include "continuation.hpp"
 #include <cassert>
 #include <functional>
+
 int main() {
     using namespace gpd;
     {
-        std::function<void(int)> callback;
+        promise<int> callback;
 
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
-                future<int> f;
-                callback = f.promise();
+                future<int> f = callback.get_future();
                 assert(!f);
                 wait(task, f);
                 assert(f);
@@ -19,18 +20,15 @@ int main() {
             });
 
         assert(!c);
-        callback(10);
+        callback.set_value(10);
     }
     {   
-        std::function<void(int)> callback1;
-        std::function<void(int)> callback2;
+        promise<int> callback1,  callback2;
 
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
-                future<int> f1;
-                future<int> f2;
-                callback1 = f1.promise();
-                callback2 = f2.promise();
+                future<int> f1 = callback1.get_future();
+                future<int> f2 = callback2.get_future();
                 assert(!f1);
                 assert(!f2);
                 wait_any(task, f1, f2);
@@ -43,19 +41,17 @@ int main() {
             });
 
         assert(!c);
-        callback2(10);
-        callback1(42);
+        callback2.set_value(10);
+        callback1.set_value(42);
     }
     {   
-        std::function<void(int)> callback1;
-        std::function<void(int)> callback2;
+        promise<int> callback1;
+        promise<int> callback2;
 
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
-                future<int> f1;
-                future<int> f2;
-                callback1 = f1.promise();
-                callback2 = f2.promise();
+                future<int> f1 = callback1.get_future();
+                future<int> f2 = callback2.get_future();
                 assert(!f1);
                 assert(!f2);
                 task();
@@ -69,21 +65,19 @@ int main() {
             });
 
         assert(c);
-        callback2(10);
-        callback1(42);
+        callback2.set_value(10);
+        callback1.set_value(42);
         c();
         assert(!c);
     }
     {   
-        std::function<void(int)> callback1;
-        std::function<void(int)> callback2;
+        promise<int> callback1;
+        promise<int> callback2;
 
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
-                future<int> f1;
-                future<int> f2;
-                callback1 = f1.promise();
-                callback2 = f2.promise();
+                future<int> f1 = callback1.get_future();
+                future<int> f2 = callback2.get_future();
                 assert(!f1);
                 assert(!f2);
                 task();
@@ -96,22 +90,20 @@ int main() {
             });
 
         assert(c);
-        callback2(10);
-        callback1(42);
+        callback2.set_value(10);
+        callback1.set_value(42);
         c();
         assert(!c);
     }
 
     {   
-        std::function<void(int)> callback1;
-        std::function<void(int)> callback2;
+        promise<int> callback1;
+        promise<int> callback2;
 
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
-                future<int> f1;
-                future<int> f2;
-                callback1 = f1.promise();
-                callback2 = f2.promise();
+                future<int> f1 = callback1.get_future();
+                future<int> f2 = callback2.get_future();
                 assert(!f1);
                 assert(!f2);
                 wait_all(task, f1, f2);
@@ -122,26 +114,26 @@ int main() {
             });
 
         assert(!c);
-        callback2(10);
-        callback1(11);
+        callback2.set_value(10);
+        callback1.set_value(11);
     }
     {
-        std::function<void(int, double)> callback;
+        promise<std::tuple<int, double> > callback;
 
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
-                future<std::tuple<int, double> > f;
-                callback = f.promise();
+                future<std::tuple<int, double> > f = callback.get_future();
                 assert(!f);
                 wait(task, f);
                 assert(f);
-                assert(std::get<0>(*f) == 10);
-                assert(std::get<1>(*f) == 11);
+                auto x = *f;
+                assert(std::get<0>(x) == 10);
+                assert(std::get<1>(x) == 11);
                 return task;
             });
 
         assert(!c);
-        callback(10,11);
+        callback.set_value(std::make_tuple(10,11));
     }
 
 }

@@ -43,7 +43,12 @@ swarm_LIBS=	\
 	GL\
 	GLU\
 
-asio_test_LIBS=$(BOOST_SYS_LIB)
+asio_test_LIBS=\
+	$(BOOST_SYS_LIB)\
+	event\
+
+future_test_LIBS=\
+	event\
 
 #.PHONY
 tests: $(TESTS)

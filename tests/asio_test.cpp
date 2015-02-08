@@ -14,10 +14,13 @@
 #include <iostream>
 #include "continuation.hpp" 
 #include "future.hpp"
+#include "task_waiter.hpp"
+
 typedef boost::asio::ip::tcp::acceptor acceptor_type;
 typedef boost::asio::ip::tcp::endpoint endpoint_type;
 using std::placeholders::_1;
 boost::asio::io_service demuxer;
+
 
 // Do something, calculate xor of the buffer.
 void frob(char * begin, size_t len) {
@@ -27,12 +30,10 @@ void frob(char * begin, size_t len) {
     begin[len-1] ^= first;
 }
 
-typedef gpd::continuation<void(void)> thread_type;
-
-
+typedef gpd::continuation<void(void)> task_t;
 
 typedef boost::system::error_code error_type;
-thread_type thread(thread_type scheduler,
+task_t thread(task_t scheduler,
             acceptor_type* acceptor,
             endpoint_type* endpoint,
             int counter, int token_size){
@@ -42,71 +43,90 @@ thread_type thread(thread_type scheduler,
     boost::asio::ip::tcp::socket sink(demuxer);
     boost::asio::ip::tcp::socket source(demuxer);
 
-    gpd::latch<error_type> accept_error;
-    gpd::latch<error_type> connect_error;
+    gpd::promise<error_type> accept_promise;
+    gpd::promise<error_type> connect_promise;
+    auto accept_error = accept_promise.get_future();
+    auto connect_error = connect_promise.get_future();
 
-    acceptor->async_accept(sink,
-                           accept_error.promise());
+    auto bind = [](auto& x) {
+        return [p = &x] (auto... y) mutable {
+            p->set_value({ y... });
+        };
+    };
+    
+    acceptor->async_accept(sink, bind(accept_promise));
 
-    source.async_connect(*endpoint,
-                         connect_error.promise());
+    source.async_connect(*endpoint, bind(connect_promise));
 
-    gpd::wait_all(scheduler, connect_error, accept_error);
-
-    assert(connect_error);
-    assert(accept_error);
+    wait_all(scheduler, connect_error, accept_error);
+   
+    assert(connect_error.is_ready());
+    assert(accept_error.is_ready());
  
+    if (auto error = accept_error.get()) {
+        std::cerr << "accept error, \"" << boost::system::system_category().message(error.value()) << "\"\n";
+        return scheduler;
 
+    }
+
+    if (auto error = connect_error.get()) {
+        std::cerr << "connect error, \"" << boost::system::system_category().message(error.value()) << "\"\n";
+        return scheduler;
+
+    }
+    
     struct err { error_type error;  std::size_t len; };
-    gpd::future<err> read_error, write_error;
+    gpd::promise<err> read_promise, write_promise;
+    auto read_error = read_promise.get_future();
+    auto write_error = write_promise.get_future();
 
     boost::asio::async_read(source,
                             boost::asio::buffer(token, token_size),
-                            read_error.promise());
+                            bind(read_promise));
 
     boost::asio::async_write(sink,
                              boost::asio::buffer(token, token_size),
-                             write_error.promise());
+                             bind(write_promise));
 
     while(counter) {
 
-        if(write_error) {
-            if(write_error->error){
-                std::cerr << "write error, \"" << boost::system::system_category().message(write_error->error.value()) << "\", count="<<counter <<"\n";
-                write_error.reset();
+        if(write_error.is_ready()) {
+            auto x = write_error.get(scheduler);
+            if(x.error){
+               std::cerr << "write error, \"" << boost::system::system_category().message(x.error.value()) << "\", count="<<counter <<"\n";
 
                 break;
             }
-            write_error.reset();
+            write_promise = gpd::promise<err>();
+            write_error = write_promise.get_future();
 
             frob(token, token_size);
             boost::asio::async_write(sink,
                                      boost::asio::buffer(token, token_size),
-                                     write_error.promise());
+                                     bind(write_promise));
             counter--;
 
         }
  
-        if(read_error) {
-            if(read_error->error) {
-                read_error.reset();
+        if(read_error.is_ready()) {
+            auto x = read_error.get(scheduler);
+            if(x.error) {
                 std::cerr << "read error, count="<<counter <<"\n";
                 break;
             }
-
-            read_error.reset();
+            read_promise = gpd::promise<err>();
+            read_error = read_promise.get_future();
             boost::asio::async_read(source,
                                     boost::asio::buffer(token, token_size),
-                                    read_error.promise());
+                                    bind(read_promise));
         }
  
-
-        gpd::wait_any(scheduler, read_error, write_error);
+        wait_any(scheduler, read_error, write_error);
     }
    
     sink.close();
 
-    gpd::wait_all(scheduler, read_error, write_error);
+    wait_all(scheduler, read_error, write_error);
     return scheduler;
 }
  
@@ -114,18 +134,19 @@ typedef std::vector<boost::shared_ptr<acceptor_type> > acceptor_vector_type;
 typedef std::vector< endpoint_type > endpoint_vector_type;
 
 int main(int argc, char** argv) {
-    int count = ((argc >= 2) ? boost::lexical_cast<int>(argv[1]): 10);
-    int count_2 = ((argc >= 3) ? boost::lexical_cast<int>(argv[2]): 2);
+    int count = ((argc >= 2) ? boost::lexical_cast<int>(argv[1]): 100);
+    int task_count = ((argc >= 3) ? boost::lexical_cast<int>(argv[2]): 3);
     int base_port = ((argc >= 4) ? boost::lexical_cast<int>(argv[3]): 30000);
-    int token_size = ((argc == 5) ? boost::lexical_cast<int>(argv[4]): 4096);;
+    int token_size = ((argc == 5) ? boost::lexical_cast<int>(argv[4]): 200);;
+    int thread_count = ((argc == 6) ? boost::lexical_cast<int>(argv[5]): 2);;
 
     acceptor_vector_type acceptor_vector;
     endpoint_vector_type endpoint_vector;
 
-    acceptor_vector.reserve(count_2);
-    endpoint_vector.reserve(count_2);
+    acceptor_vector.reserve(task_count);
+    endpoint_vector.reserve(task_count);
 
-    for(int i= 0; i< count_2; i++) {
+    for(int i= 0; i< task_count; i++) {
         endpoint_vector.push_back
             (endpoint_type
              (boost::asio::ip::address_v4::from_string("127.0.0.1"),
@@ -142,18 +163,18 @@ int main(int argc, char** argv) {
     auto acceptor = &*acceptor_vector.back();
     auto endpoint = &endpoint_vector.back();
 
-    gpd::callcc([=](thread_type master) { 
+    gpd::callcc([=](task_t master) { 
             return thread(std::move(master),
                    acceptor, 
                    endpoint,
                    count, token_size);
         });
                 
-    for(int i=1; i< count_2; i++) {
+    for(int i=1; i< task_count; i++) {
         auto acceptor = &*acceptor_vector[i-1];
         auto endpoint = &endpoint_vector[i-1];
 
-        gpd::callcc([&](thread_type master) { 
+        gpd::callcc([&](task_t master) { 
                 return thread(std::move(master),
                        acceptor, endpoint,
                        count, token_size);
@@ -161,12 +182,11 @@ int main(int argc, char** argv) {
     }
     
     std::vector<std::thread> v;
-    for(int i = 0; i < 100; ++i) 
+    for(int i = 0; i < thread_count; ++i) 
         v.push_back(std::thread([] {
                     demuxer.run();
                 }));
 
     for (auto& t: v) t.join();
-
 }
  
