@@ -12,10 +12,10 @@ int main() {
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
                 future<int> f = callback.get_future();
-                assert(!f);
+                assert(!f.ready());
                 wait(task, f);
-                assert(f);
-                assert(*f == 10);
+                assert(f.ready());
+                assert(f.get() == 10);
                 return task;
             });
 
@@ -29,14 +29,14 @@ int main() {
                 using gpd::wait;
                 future<int> f1 = callback1.get_future();
                 future<int> f2 = callback2.get_future();
-                assert(!f1);
-                assert(!f2);
+                assert(!f1.ready());
+                assert(!f2.ready());
                 wait_any(task, f1, f2);
-                assert(f2);
-                assert(*f2 == 10);
+                assert(f2.ready());
+                assert(f2.get() == 10);
                 wait_any(task, f1, f2);
-                assert(f1);
-                assert(*f1 == 42);
+                assert(f1.ready());
+                assert(f1.get() == 42);
                 return task;
             });
 
@@ -52,15 +52,15 @@ int main() {
                 using gpd::wait;
                 future<int> f1 = callback1.get_future();
                 future<int> f2 = callback2.get_future();
-                assert(!f1);
-                assert(!f2);
+                assert(!f1.ready());
+                assert(!f2.ready());
                 task();
                 wait_any(task, f1, f2);
-                assert(f2);
-                assert(*f2 == 10);
+                assert(f2.ready());
+                assert(f2.get() == 10);
                 wait_any(task, f1, f2);
-                assert(f1);
-                assert(*f1 == 42);
+                assert(f1.ready());
+                assert(f1.get() == 42);
                 return task;
             });
 
@@ -78,14 +78,14 @@ int main() {
                 using gpd::wait;
                 future<int> f1 = callback1.get_future();
                 future<int> f2 = callback2.get_future();
-                assert(!f1);
-                assert(!f2);
+                assert(!f1.ready());
+                assert(!f2.ready());
                 task();
                 wait_all(task, f1, f2);
-                assert(f2);
-                assert(*f2 == 10);
-                assert(f1);
-                assert(*f1 == 42);
+                assert(f2.ready());
+                assert(f2.get() == 10);
+                assert(f1.ready());
+                assert(f1.get() == 42);
                 return task;
             });
 
@@ -104,12 +104,12 @@ int main() {
                 using gpd::wait;
                 future<int> f1 = callback1.get_future();
                 future<int> f2 = callback2.get_future();
-                assert(!f1);
-                assert(!f2);
+                assert(!f1.ready());
+                assert(!f2.ready());
                 wait_all(task, f1, f2);
-                assert(f2 && f1);
-                assert(*f2 == 10);
-                assert(*f1 == 11);
+                assert(f2.ready() && f1.ready());
+                assert(f2.get() == 10);
+                assert(f1.get() == 11);
                 return task;
             });
 
@@ -123,10 +123,10 @@ int main() {
         auto c = callcc([&](task_t task) {
                 using gpd::wait;
                 future<std::tuple<int, double> > f = callback.get_future();
-                assert(!f);
+                assert(!f.ready());
                 wait(task, f);
-                assert(f);
-                auto x = *f;
+                assert(f.ready());
+                auto x = f.get();
                 assert(std::get<0>(x) == 10);
                 assert(std::get<1>(x) == 11);
                 return task;

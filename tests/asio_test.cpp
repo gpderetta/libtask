@@ -15,7 +15,7 @@
 #include "continuation.hpp" 
 #include "future.hpp"
 #include "task_waiter.hpp"
-
+#include <boost/thread/future.hpp>
 typedef boost::asio::ip::tcp::acceptor acceptor_type;
 typedef boost::asio::ip::tcp::endpoint endpoint_type;
 using std::placeholders::_1;
@@ -60,8 +60,8 @@ task_t thread(task_t scheduler,
 
     wait_all(scheduler, connect_error, accept_error);
    
-    assert(connect_error.is_ready());
-    assert(accept_error.is_ready());
+    assert(connect_error.ready());
+    assert(accept_error.ready());
  
     if (auto error = accept_error.get()) {
         std::cerr << "accept error, \"" << boost::system::system_category().message(error.value()) << "\"\n";
@@ -90,7 +90,7 @@ task_t thread(task_t scheduler,
 
     while(counter) {
 
-        if(write_error.is_ready()) {
+        if(write_error.ready()) {
             auto x = write_error.get(scheduler);
             if(x.error){
                std::cerr << "write error, \"" << boost::system::system_category().message(x.error.value()) << "\", count="<<counter <<"\n";
@@ -108,7 +108,7 @@ task_t thread(task_t scheduler,
 
         }
  
-        if(read_error.is_ready()) {
+        if(read_error.ready()) {
             auto x = read_error.get(scheduler);
             if(x.error) {
                 std::cerr << "read error, count="<<counter <<"\n";

@@ -216,7 +216,7 @@ public:
     }
 
     bool valid()    const    { return state; }
-    bool is_ready() const { return state && !state->is_empty(); }
+    bool ready() const { return state && !state->is_empty(); }
 
     
     template<class WaitStrategy=default_waiter>
