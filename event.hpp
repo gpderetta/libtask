@@ -81,13 +81,6 @@ struct event //: waiter
         return val != 0 && state.compare_exchange_strong(val, state_t::shared);
     }
 
-    struct nop_waiter_t : waiter {
-        virtual void signal(event_ptr) override {};
-        virtual ~nop_waiter_t() override {}
-    };
-
-    static nop_waiter_t nop_waiter;
-
     virtual ~event()  {}
 private:
     std::uintptr_t get_state() const { return state.load(std::memory_order_acquire); }
@@ -99,6 +92,13 @@ private:
     std::atomic<std::uintptr_t> state;
                              
 };
+
+struct nop_waiter_t : waiter {
+    virtual void signal(event_ptr) override {};
+    virtual ~nop_waiter_t() override {}
+};
+
+extern nop_waiter_t nop_waiter;
 
 // ADL customization point. Given a "Waitable", returns an event
 // object. The lifetime of the result is the same as for 'x'. Only

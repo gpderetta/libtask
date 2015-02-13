@@ -206,7 +206,7 @@ public:
 
     friend event* get_event(future& x) { return x.state;  }
 
-    ~future() {  if (state) state->then(&event::nop_waiter);   }
+    ~future() {  if (state) state->then(&nop_waiter);   }
 
     template<class WaitStrategy=default_waiter>
     T get(WaitStrategy&& strategy = WaitStrategy{}) {
