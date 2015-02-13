@@ -51,18 +51,6 @@ struct event //: waiter
         }
     }
 
-    // Attempt to notify the consumer thread and relinquish ownership
-    // of the event. On failure, the consumer is already waiting.
-    // Call signal to invoke the waiter
-    __attribute__((warn_unused_result))
-    bool try_signal()  {
-        auto val = get_state();
-        // not shared nor waited: can't happen
-        assert(val != 0);
-        
-        return val == state_t::shared && state.compare_exchange_strong(val, 0);
-    }
-
     // Register a consumer callback with the event relinquish
     // ownership of the event. Pre: no dismissiable wait must be
     // pending.
@@ -80,23 +68,6 @@ struct event //: waiter
             // we need to call this ourselves
             w_->signal(event_ptr(this));
         }
-    }
-
-    // Attempt to register a consumer callback with the event relinquish
-    // ownership of the event. On Pre: no dismissiable wait must be
-    // pending.
-    __attribute__((warn_unused_result))
-    bool try_then(waiter * w_) {
-        assert(w_);
-        auto val = get_state();
-
-        // not already waited
-        assert(~val & state_t::waited);
-
-        auto w = reinterpret_cast<std::uintptr_t>(w_);
-        // set the waiter and relinquish ownership
-        // returns true was still shared
-        return val != 0 && state.compare_exchange_strong(val, w);
     }
 
     // Dismiss a previous then(p) or successful try_then.  Returns
