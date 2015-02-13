@@ -88,8 +88,6 @@ struct event //: waiter
 
     static nop_waiter_t nop_waiter;
 
-    bool is_shared() const { return get_state() & state_t::shared; }
-
     virtual ~event()  {}
 private:
     std::uintptr_t get_state() const { return state.load(std::memory_order_acquire); }
