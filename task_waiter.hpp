@@ -1,87 +1,78 @@
 #ifndef GPD_TASK_WAITER_HPP
 #define GPD_TASK_WAITER_HPP
 #include "continuation.hpp"
+#include "event.hpp"
 #include <pthread.h>
 namespace gpd {
 using task_t = continuation<void()>;
 
-template<int children_count>
-struct task_waiter {
-    struct task_latch : waiter {
-        task_latch(const task_latch&) = delete;
-        task_latch(task_latch&& rhs)
-            : ev(rhs.ev), parent(rhs.parent.load(std::memory_order_relaxed))
-        {}
-        
-        event* ev;
-        std::atomic<task_waiter *> parent;
-        task_latch(event* ev, task_waiter* parent)
-            : ev(ev), parent(parent) {}
-            
-        void signal(event_ptr p) override {
-            p.release();
-            parent.load(std::memory_order_relaxed)->signal(this);
-        }
-            
-        bool arm() {
-            return !ev || ev->try_then(this);
-        }
-            
-        void disarm() {
-            if (ev && ! ev->dismiss_then(this))
-                while(parent.load(std::memory_order_relaxed))
-                    __builtin_ia32_pause();
-        }
-            
-    };
-    task_latch children[children_count];
-
-    // -1 not set, -2 stolen, otherwise index of first not waited child
-    std::atomic<int> index = {-1};
+struct task_waiter_base : waiter {
+    event **children_begin, **children_end;
     task_t next;
 
+    // whoever increments critical from 0 to 1 gets to call do_signal
+    // Starts at 1 to prevent signaling while we setup the waiters
+    std::atomic<unsigned> critical = { 1 };
+
     void wait(task_t& to) {
-        to = callcc
-            (std::move(to),
-             [this](task_t c) {
-                next = std::move(c);
-                int i;
-                for (i = 0; i < children_count; ++i)
-                    if (!children[i].arm()) { break; }
-                index.store(i, std::memory_order_release);
-                if (i != children_count) 
-                    signal(children + i);
+        bool waited = false;
+        for (auto i = children_begin; i != children_end; ++i)
+            if (*i) { waited = true; (**i).then(this); }
 
-                return c;
-            });
+        if (waited)
+            to = callcc
+                (std::move(to),
+                 [this](task_t c) {
+                    next = std::move(c);       
+                    
+                    // attempt to set critical to 0. On success, we are done
+                    if ( critical-- != 1)
+                        // signal was called at least once and critcal
+                        // incremented, but the starting non-zero value
+                        // prevented the signaler from calling
+                        // do_signal. We do it here instead.
+                        do_signal();
+                    return c;
+                });
     }
 
-    void signal(task_latch* child) {
+    void do_signal() {
+        unsigned count = 0;
+        for (auto  i = children_begin; i != children_end; ++i)
+            if (*i && ! (**i).dismiss_then(this))
+                count++; // failed to dismiss, signal in progress
 
-        // spin waiting for 'wait' to complete
-        while(index.load(std::memory_order_relaxed) == -1)
-            __builtin_ia32_pause();
-
-        int max;
-        if ((max = index.load(std::memory_order_relaxed)) == -2 ||
-            (max = index.exchange(-2)) == -2) {
-            child->parent.store(nullptr, std::memory_order_relaxed);
-            return;
-        }
-            
-        child->parent.store(nullptr, std::memory_order_relaxed);
-        auto next = std::move(this->next);
-            
-        for (int i = 0; i < max; ++i)
-            children[i].disarm();
-        next();
-    }
+        // 'count' signalers got in before we could disengage their
+        // event. We need to wait them to signal that they are out of
+        // the critical section by each increasing the critical count by one.
+        //
+        // note that the signal side critical session is tiny.
         
-    template<class... Waitable>
-    task_waiter(Waitable&... w)
-        : children{ { get_event(w), this}...  }  {}
+        while(critical != count)
+              __builtin_ia32_pause();
+        
+        auto next = std::move(this->next);
+        next();   
+    }
+    
+    void signal(event_ptr p) override {
+        p.release();
+        if (critical++ == 0)
+            // critical was exactly 0, we are in charge
+            do_signal();
+    }
+
+    task_waiter_base(event** b, event** e) : children_begin(b), children_end(e) {}
 };
 
+template<int children_count>
+struct task_waiter : task_waiter_base {
+    event* children[children_count];
+    template<class... Waitable>
+    task_waiter(Waitable&... w)
+        : task_waiter_base(children, children + children_count)
+        , children{ get_event(w)...  }  {}
+};
 
 template<class Waitable>
 void wait_adl(task_t& to, Waitable& w) {
@@ -109,13 +100,11 @@ void wait_adl(task_t& to, Waitable& w) {
             state->then(&waiter);
             return c;
         });
-
 }
 
 template<class... Waitable>
 void wait_any_adl(task_t& to, Waitable&... w) {
-    for (bool x : { get_event(w)... })
-        if (x) return task_waiter<sizeof...(w)>{ w... }.wait(to);
+    task_waiter<sizeof...(w)>{ w... }.wait(to);
 }
 
 }
