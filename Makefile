@@ -1,6 +1,6 @@
 FEATURE_FLAGS= --std=c++14
 #DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
-DEVEL_FLAGS= -W -Wall -g  -fopenmp -g -msse4.2
+DEVEL_FLAGS= -W -Wall -g  -fopenmp -g -msse4.2 -march=native
 
 SUPPRESS=1
 INCLUDE=-I.

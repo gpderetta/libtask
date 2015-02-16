@@ -12,14 +12,10 @@ struct task_waiter_base : waiter {
 
     // whoever increments critical from 0 to 1 gets to call do_signal
     // Starts at 1 to prevent signaling while we setup the waiters
-    std::atomic<unsigned> critical = { 1 };
+    std::atomic<std::size_t> critical = { 1 };
 
     void wait(task_t& to) {
-        bool waited = false;
-        for (auto i = children_begin; i != children_end; ++i)
-            if (*i) { waited = true; (**i).then(this); }
-
-        if (waited)
+        if (event::then(this, children_begin, children_end))
             to = callcc
                 (std::move(to),
                  [this](task_t c) {
@@ -37,11 +33,7 @@ struct task_waiter_base : waiter {
     }
 
     void do_signal() {
-        unsigned count = 0;
-        for (auto  i = children_begin; i != children_end; ++i)
-            if (*i && ! (**i).dismiss_then(this))
-                count++; // failed to dismiss, signal in progress
-
+        std::size_t count = event::dismiss_then(this, children_begin, children_end);
         // 'count' signalers got in before we could disengage their
         // event. We need to wait them to signal that they are out of
         // the critical section by each increasing the critical count by one.
