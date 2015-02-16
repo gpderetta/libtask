@@ -13,6 +13,13 @@ struct waiter {
     virtual ~waiter() {}
 };
 
+struct delete_waiter_t : waiter {
+    virtual void signal(event_ptr) override {};
+    virtual ~delete_waiter_t() override {}
+};
+
+extern delete_waiter_t delete_waiter;
+
 
 
 // Synchronize a producer and a consumer via a continuation.
@@ -93,12 +100,7 @@ private:
                              
 };
 
-struct nop_waiter_t : waiter {
-    virtual void signal(event_ptr) override {};
-    virtual ~nop_waiter_t() override {}
-};
 
-extern nop_waiter_t nop_waiter;
 
 // ADL customization point. Given a "Waitable", returns an event
 // object. The lifetime of the result is the same as for 'x'. Only

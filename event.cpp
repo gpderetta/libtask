@@ -1,4 +1,4 @@
 #include "event.hpp"
 namespace gpd {
-nop_waiter_t nop_waiter = {};
+delete_waiter_t delete_waiter = {};
 }
