@@ -211,7 +211,8 @@ public:
     template<class WaitStrategy=default_waiter>
     T get(WaitStrategy&& strategy = WaitStrategy{}) {
         using gpd::wait;
-        wait(strategy, *this);
+        if (!ready())
+            wait(strategy, *this);
         return std::unique_ptr<shared_state>(steal())->get_move();
     }
 
@@ -223,7 +224,8 @@ public:
     void wait(WaitStrategy&& strategy=WaitStrategy{}) {
         using gpd::wait;
         assert(valid());
-        wait(strategy, *this);
+        if (!ready())
+            wait(strategy, *this);
     }
 
     template<class F>
