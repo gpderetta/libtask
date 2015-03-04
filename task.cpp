@@ -96,12 +96,10 @@ void yield(scheduler_t& target = scheduler_t::sched) {
 
 struct scheduler_waiter : waiter, scheduler_t::node {
 
-    std::uint32_t wait_counter = { 0 };
     std::atomic<std::uint32_t> signal_counter = { 0 };
 
     void reset() {
         signal_counter.store(0, std::memory_order_relaxed);
-        wait_counter = 0;
     }
     
     void signal(event_ptr p) override {
@@ -117,9 +115,7 @@ struct scheduler_waiter : waiter, scheduler_t::node {
             (std::move(next->task),
              [&](task_t c) {
                 task = std::move(c);
-                auto delta = count - wait_counter;
-                wait_counter += delta;
-                if ((signal_counter += delta) == 0)
+                if ((signal_counter += count) == 0)
                     scheduler_t::post(*this);
                 return c;
             });
