@@ -5,11 +5,11 @@
 #include <stdint.h>
 #include <limits.h>
 
-#define _GNU_SOURCE
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
-#include "atomic.hpp"
+#include <errno.h>
+#include <atomic>
 
 namespace gpd {
 namespace details {
@@ -22,9 +22,14 @@ inline long sys_futex(void *addr1, int op, int val1,
 /**
  * A futex + atomic<int> in a user friendlier package.
  */
-class futex : atomic<int> {
-    enum wait_result { woken = 0 , timeout = ETIMEOUT, 
+class futex : public std::atomic<int>  {
+public:
+    enum wait_result { woken = 0 , timeout = ETIMEDOUT,
+                       try_again = EAGAIN,
                        wouldblock = EWOULDBLOCK, interrupted = EINTR };
+
+    futex(int i) : std::atomic<int>(i) {}
+    
     
     /**
      * Block the current thread unless the associated atomic int is
@@ -36,8 +41,7 @@ class futex : atomic<int> {
     wait_result
     wait(int value) {
         int ret = details::sys_futex(this, FUTEX_WAIT_PRIVATE, value, 0, 0, 0);
-        assert(ret != -1);
-        return wait_result(ret);
+        return ret == -1 ? wait_result(errno) : woken; 
     }
 
     /**
@@ -49,8 +53,7 @@ class futex : atomic<int> {
     wait_result 
     wait(int value, timespec t) {
         int ret = details::sys_futex(this, FUTEX_WAIT_PRIVATE, value, &t, 0, 0);
-        assert(ret != -1);
-        return wait_result(ret);
+        return ret == -1 ? wait_result(errno) : woken; 
     }
 
     /**
@@ -59,15 +62,15 @@ class futex : atomic<int> {
      * For n == INT_MAX (the default), wake all waiters.
      */ 
     int signal(int n = INT_MAX) {
-        int ret = details::sys_futex(this, FUTEX_WAKE_PRIVATE, value, 0, 0, 0);
+        int ret = details::sys_futex(this, FUTEX_WAKE_PRIVATE, n, 0, 0, 0);
+        if (ret == -1)
+            perror(0);
         assert(ret != -1);
         return ret;
     }
 
-    
-
 private:
-    atomic<int> location;
+
 };
 
 
