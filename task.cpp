@@ -97,7 +97,6 @@ void yield(scheduler_t& target = scheduler_t::sched) {
 struct scheduler_waiter : waiter, scheduler_t::node {
 
     std::uint32_t wait_counter = { 0 };
-    char padding[60];
     std::atomic<std::uint32_t> signal_counter = { 0 };
 
     void reset() {

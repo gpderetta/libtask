@@ -10,7 +10,6 @@ struct task_waiter : waiter {
     task_t next;
     task_t get() { return std::move(next); }
 
-    char padding[60];
     std::atomic<std::uint32_t> signal_counter = { 0 };
 
     task_waiter(task_t task) : next(std::move(task)) {}

@@ -14,7 +14,6 @@ struct fd_waiter : waiter {
         assert(fd != -1);
     }
 
-    char padding[60];
     std::atomic<std::int32_t> signal_counter = { 0 };
 
     void reset() {
