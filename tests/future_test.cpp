@@ -1,8 +1,13 @@
 #include "future.hpp"
 #include "task_waiter.hpp"
+#include "cv_waiter.hpp"
+#include "fd_waiter.hpp"
+
 #include "continuation.hpp"
 #include <cassert>
 #include <functional>
+#include <unistd.h>
+#include <algorithm>
 
 int main() {
     using namespace gpd;
@@ -134,6 +139,38 @@ int main() {
 
         assert(!c);
         callback.set_value(std::make_tuple(10,11));
+    }
+
+    auto launch = [] {
+        gpd::promise<int> promise;
+        auto future = promise.get_future();
+        std::thread th([promise=std::move(promise)] () mutable {
+                //::sleep(1);
+                promise.set_value(0);                    
+            });
+        th.detach();
+        return future;
+    };
+
+    auto test = [&](auto& strategy) {
+
+
+        gpd::future<int> f[] = { launch(), launch(), launch(), launch() };
+        while (std::any_of(std::begin(f), std::end(f),
+                           [](auto&& f) { return !f.ready(); })) {
+            wait_any(strategy, f[0], f[1], f[2], f[3]);
+        }
+    };
+
+    for (int i = 0; i < 10000; ++i)
+    {
+        cv_waiter cv;
+        test(cv);
+    }
+    for (int i = 0; i < 1000; ++i)
+    {
+        fd_waiter cv;
+        test(cv);
     }
 
 }
