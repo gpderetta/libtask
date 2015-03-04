@@ -3,7 +3,7 @@
 #include "cv_waiter.hpp"
 #include "fd_waiter.hpp"
 #include "futex_waiter.hpp"
-
+#include "sem_waiter.hpp"
 #include "continuation.hpp"
 #include <cassert>
 #include <functional>
@@ -176,6 +176,11 @@ int main() {
     for (int i = 0; i < 1000; ++i)
     {
         futex_waiter cv;
+        test(cv);
+    }
+    for (int i = 0; i < 1000; ++i)
+    {
+        sem_waiter cv;
         test(cv);
     }
 
