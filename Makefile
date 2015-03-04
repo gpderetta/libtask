@@ -13,7 +13,7 @@ BOOST_PO_LIB=boost_program_options
 BOOST_SYS_LIB=boost_system
 
 PROGRAMS=swarm
-STATIC_LIBRARIES=libevent 
+STATIC_LIBRARIES=libtask 
 
 TESTS=match_test\
 	continuation_test \
@@ -30,8 +30,9 @@ pipe_test_LIBS=boost_regex
 benchmark_test_LIBS=boost_timer\
 	boost_system
 
-libevent_SOURCES=\
+libtask_SOURCES=\
 	event.cpp\
+	task.cpp\
 
 swarm_SOURCES=		\
 	swarm.cpp\
@@ -45,13 +46,10 @@ swarm_LIBS=	\
 
 asio_test_LIBS=\
 	$(BOOST_SYS_LIB)\
-	event\
+	task\
 
 future_test_LIBS=\
-	event\
-
-#.PHONY
-tests: $(TESTS)
+	task\
 
 include Makefile.common
 
