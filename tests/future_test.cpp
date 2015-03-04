@@ -2,6 +2,7 @@
 #include "task_waiter.hpp"
 #include "cv_waiter.hpp"
 #include "fd_waiter.hpp"
+#include "futex_waiter.hpp"
 
 #include "continuation.hpp"
 #include <cassert>
@@ -170,6 +171,11 @@ int main() {
     for (int i = 0; i < 1000; ++i)
     {
         fd_waiter cv;
+        test(cv);
+    }
+    for (int i = 0; i < 1000; ++i)
+    {
+        futex_waiter cv;
         test(cv);
     }
 
