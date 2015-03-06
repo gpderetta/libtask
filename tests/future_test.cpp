@@ -164,25 +164,27 @@ int main() {
         }
     };
 
-    for (int i = 0; i < 10000; ++i)
+    std::size_t count = 1;
+    for (std::size_t i = 0; i < count; ++i)
     {
-        cv_waiter cv;
-        test(cv);
+        cv_waiter waiter;
+        test(waiter);
     }
-    for (int i = 0; i < 1000; ++i)
+    for (std::size_t i = 0; i < count; ++i)
     {
-        fd_waiter cv;
-        test(cv);
+        fd_waiter waiter;
+        test(waiter);
     }
-    for (int i = 0; i < 1000; ++i)
+    for (std::size_t i = 0; i < count; ++i)
     {
-        futex_waiter cv;
-        test(cv);
+        futex_waiter waiter;
+        test(waiter);
     }
-    for (int i = 0; i < 1000; ++i)
+    for (std::size_t i = 0; i < count; ++i)
     {
-        sem_waiter cv;
-        test(cv);
+        sem_waiter waiter;
+        test(waiter);
+    }
     {
         sem_waiter waiter;
         auto& sched = *start_background_scheduler().get();
