@@ -12,7 +12,7 @@ struct cont {
     explicit operator bool() const { return sp;}
 };
 
-void * stack_bottom(void * vp, size_t size) {
+inline void * stack_bottom(void * vp, size_t size) {
     char * p = (char*)vp;
     p += size ;
     p -= 7*sizeof(void*);  
