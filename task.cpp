@@ -4,37 +4,28 @@
 #include <mutex>
 #include <set>
 namespace gpd {
-
 namespace {
 
-struct scheduler_t {
+thread_local scheduler * scheduler_ptr = 0;
 
-    struct node : gpd::node {
-        std::uint64_t pri = 0;
-        bool pinned  = scheduler_t::get_pinned();
-        scheduler_t & scheduler = scheduler_t::sched;
-        task_t task;
+struct scheduler_saver {
+    scheduler * saved;
+    scheduler_saver(scheduler& sched)
+        : saved(std::exchange(scheduler_ptr, &sched))
+    {}
+    ~scheduler_saver() { scheduler_ptr = saved; }
+};
 
-        bool stolen() const { return &scheduler != &scheduler_t::sched; }
-        
-        ~node() { scheduler_t::set_pinned(pinned); }
-    };
+}
 
 
-    static bool set_pinned(bool pinned) {
-        return std::exchange(sched.pinned, pinned);
-    }
+struct scheduler {
+    scheduler(const scheduler&) = delete;
+    scheduler() {}
+    friend void idle(scheduler&);
+    typedef details::scheduler_node node;
 
-    static bool get_pinned() { return sched.pinned; }
-    static node * pop() { return sched.do_pop(); }
-    static void post(node& n) {
-        if (n.pinned && n.stolen())
-            n.scheduler.push(&n);
-        else
-            sched.push(&n);
-    }
-
-    node* do_pop() {
+    node* pop() {
         std::uint64_t pri[] = {
             get_pri(pinned_tasks),
             get_pri(tasks),
@@ -50,7 +41,7 @@ struct scheduler_t {
     void push(node* n) {
         int pri = generation.load(std::memory_order_relaxed) + 1;
         n->pri = pri;
-        if (&sched == this) {
+        if (scheduler_ptr == this) {
             generation.store(pri,std::memory_order_relaxed);                
             (pinned ? pinned_tasks : tasks).push_unlocked(n);
         } else {
@@ -59,9 +50,8 @@ struct scheduler_t {
                 waiter.signal({});
         }
     }
-
-    static thread_local scheduler_t sched;
-
+    
+    bool pinned = false;
 private:
 
     static std::uint64_t get_pri(mpsc_queue<node>& q) {
@@ -73,102 +63,129 @@ private:
     mpsc_queue<node> pinned_tasks;
     mpsc_queue<node> tasks;
     mpsc_queue<node> remote_tasks;
-    bool pinned = false;
+
     std::atomic<bool> waiting;
     fd_waiter waiter;
 };
 
 
-constexpr struct scheduler_tag {} scheduler;
+namespace details {
 
-void yield(scheduler_t& target = scheduler_t::sched) {
-    auto next = scheduler_t::pop();
+scheduler_node::scheduler_node()
+    : pri(0)
+    , sched(scheduler_ptr)
+    , pinned(sched && sched->pinned)
+{}
+
+scheduler_node::~scheduler_node() {
+    if(sched) std::exchange(sched->pinned, pinned);
+}
+
+bool scheduler_node::stolen() const {
+    return sched != scheduler_ptr;
+}
+
+scheduler& scheduler_get_local() {
+    assert(scheduler_ptr);
+    return *scheduler_ptr;
+}
+
+void scheduler_post(details::scheduler_node& n) {
+    assert(n.sched || scheduler_ptr);
+    assert(!n.pinned || n.sched);
+    if ( (n.pinned && n.stolen()) || !scheduler_ptr)
+        n.sched->push(&n);
+    else
+        scheduler_ptr->push(&n);
+}
+
+task_t scheduler_pop() {
+    auto * next = scheduler_get_local().pop();
     assert(next);
-    scheduler_t::node self;
+    return std::move(next->task);
+}
+
+}
+
+
+void idle(scheduler& sched) {
+    scheduler_saver _ (sched);
+
+    auto next = sched.pop();
+    if (next == 0) {
+        sched.waiting.exchange(true);
+        sched.waiter.reset();
+        while ((next = sched.pop()) == 0)
+            sched.waiter.wait();
+        sched.waiting.store(0, std::memory_order_relaxed);
+    }
+
+    scheduler::node self;
     auto old = callcc(
         std::move(next->task),
         [&](task_t task) {
             self.task = std::move(task);
-            target.push(&self);
+            sched.push(&self);
+            return task;
         });
     assert(!old);
 }
 
-struct scheduler_waiter : waiter, scheduler_t::node {
-
-    std::atomic<std::uint32_t> signal_counter = { 0 };
-
-    void reset() {
-        signal_counter.store(0, std::memory_order_relaxed);
-    }
-    
-    void signal(event_ptr p) override {
-        p.release();
-        if (--signal_counter == 0) 
-            scheduler_t::post(*this);
-    }
-
-    void wait(std::uint32_t count = 1) {
-        auto next = scheduler_t::pop();
-
-        auto to = callcc
-            (std::move(next->task),
-             [&](task_t c) {
-                task = std::move(c);
-                if ((signal_counter += count) == 0)
-                    scheduler_t::post(*this);
-                return c;
-            });
-        assert(!to);
-    }
-};
-
-template<class... Waitable>
-void wait_any_adl(scheduler_tag, Waitable&... w) {
-    scheduler_waiter waiter;
-    gpd::wait_any(waiter, w...);
+future<scheduler*> start_background_scheduler() {
+    promise<scheduler*> result;
+    auto future = result.get_future();
+    std::thread th([result = std::move(result)] () mutable {
+            scheduler sched;
+            result.set_value(&sched);
+            while(true)
+                idle(sched);
+        });
+    th.detach();
+    return future;
 }
 
-template<class... Waitable>
-void wait_all_adl(scheduler_tag, Waitable&... w) {
-    scheduler_waiter waiter;
-    gpd::wait_all(waiter, w...);
+
+
+void yield(scheduler& target, task_t next) {
+    scheduler::node self;
+    auto old = callcc(
+        std::move(next),
+        [&](task_t task) {
+            self.task = std::move(task);
+            target.push(&self);
+            return task;
+        });
+    assert(!old);
 }
 
-template<class Waitable>
-void wait_adl(scheduler_tag, Waitable& w) {
-    if (get_event(w) == 0) return;
-    
-    auto next = scheduler_t::pop();
-    assert(next);
-    struct task_latch : waiter, scheduler_t::node {
-        void signal(event_ptr p) override {
-            p.release();
-            scheduler_t::post(*this);
-        }
-    } waiter;
+void yield(scheduler& target) {
+    yield(target, details::scheduler_pop());
+}
 
+void yield(task_t next) {
+    yield(details::scheduler_get_local(), std::move(next));
+}
+
+void yield() {
+    yield(details::scheduler_get_local(), details::scheduler_pop());
+}
+
+void details::scheduler_waiter::signal(event_ptr p) {
+    p.release();
+    if (--signal_counter == 0) 
+        details::scheduler_post(*this);    
+}
+
+void details::scheduler_waiter::wait(std::uint32_t count) {
     auto to = callcc
-        (std::move(next->task),
+        (details::scheduler_pop(),
          [&](task_t c) {
-            waiter.task = std::move(c);
-            auto state = get_event(w);
-            assert(state);
-            state->then(&waiter);
+            task = std::move(c);
+            if ((signal_counter += count) == 0)
+                details::scheduler_post(*this);
             return c;
         });
     assert(!to);
-}
-
-struct schedulers {
-    void add(scheduler_t*x) { std::lock_guard<std::mutex> {mux}, lists.insert(x); }
-    void remove(scheduler_t*x) { std::lock_guard<std::mutex>{mux}, lists.erase(x); }
-private:
-    std::mutex mux;
-    std::set<scheduler_t*> lists;
-
-    
-};
 }
 
 }

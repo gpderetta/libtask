@@ -5,6 +5,7 @@
 #include "futex_waiter.hpp"
 #include "sem_waiter.hpp"
 #include "continuation.hpp"
+#include "task.hpp"
 #include <cassert>
 #include <functional>
 #include <unistd.h>
@@ -182,6 +183,32 @@ int main() {
     {
         sem_waiter cv;
         test(cv);
+    {
+        sem_waiter waiter;
+        auto& sched = *start_background_scheduler().get();
+        auto v1 = async(sched, []{ yield(); return 42; });
+        auto v2 = async(sched, []{ yield(); return 47; });
+        auto v3 = async(
+            sched,
+            []{
+                auto c1 = async(pool, [] { yield(); return 20; });
+                auto c2 = async(pool, [] { yield(); return 20; });
+                auto c3 = async(pool, [] { yield(); return 12; });
+                auto c4 = c3.next(
+                    [&](int x)
+                    {
+                        yield(); 
+                        wait_all(pool, c1, c2);
+                        return x + c1.get(pool) + c2.get(pool);
+                    });
+                gpd::wait(pool, c4);
+                return c4.get(pool);
+            });
+        
+        wait_all(waiter, v1, v2, v3);
+        assert(v1.get() == 42);
+        assert(v2.get() == 47);
+        assert(v3.get() == 52);
     }
 
 }
