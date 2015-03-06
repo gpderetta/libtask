@@ -301,7 +301,7 @@ auto callcc(continuation<IntoSignature> c, F f, Args&&... args) as
 template<class F, 
          class Sig = typename details::deduce_signature<F>::type>
 continuation<Sig> callcc(F f) {
-    return details::create_continuation<Sig> (f);
+    return details::create_continuation<Sig> (std::move(f));
 }
 
 template<class Sig, 
