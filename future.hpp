@@ -153,9 +153,9 @@ public:
             : fn(fn) {}
     };
 
-    static auto as_union(event_ptr p) {
-        return std::unique_ptr<shared_state_union<T> >(
-            static_cast<shared_state_union<T>*>(p.release()));
+    static auto as_shared_state(event_ptr p) {
+        return std::unique_ptr<shared_state>(
+            static_cast<shared_state*>(p.release()));
     }
 
     // hybrid state/waiter/promise for 'then' chaining
@@ -163,12 +163,12 @@ public:
     struct next_adapter : fn_adapter<Fn, T2> {
         using fn_adapter<Fn, T2>::fn_adapter;
         void signal(event_ptr p) override {
-            auto other = as_union(std::move(p));
+            auto other = as_shared_state(std::move(p));
             assert(other && !other->is_empty());
             if (other->has_except())
-                this->set_exception(std::move(other->get_except()));
+                this->set_except(std::move(other->get_except()));
             else try {
-                    this->set_value(fn(other->get_move()));
+                    this->set_value(this->fn(other->get_move()));
                 } catch(...) {
                     this->set_except(std::current_exception());
                 }                           
@@ -180,10 +180,10 @@ public:
     struct then_adapter : fn_adapter<Fn, T2> {
         using fn_adapter<Fn, T2>::fn_adapter;
         void signal(event_ptr p) override {
-            auto other = as_union(std::move(p));
+            auto other = as_shared_state(std::move(p));
             assert(other && !other->is_empty());
             try {
-                this->set_value(fn(std::move(future<T>(p.release()))));
+                this->set_value(this->fn(std::move(future<T>(p.release()))));
             } catch(...) {
                 this->set_except(std::current_exception());
             }                           
@@ -237,8 +237,9 @@ public:
         if (!state->is_empty())
             return future(f(*this));
 
-        future result (new adapter { std::forward<F>(f) });
-        std::exchange(state, nullptr)->then(result.state); 
+        auto fn_state = new adapter { std::forward<F>(f) };
+        future result (fn_state);
+        std::exchange(state, nullptr)->wait(fn_state); 
         return result;            
     }
 
@@ -253,10 +254,10 @@ public:
         if (state->has_value())
             return future(f(std::move(state->get_value())));
         if (state->has_except())
-            return future(std::move(state->get_except()));
-
-        future result( new adapter { std::forward<F>(f) });
-        std::exchange(state, nullptr)->then(result.state); 
+            return future(steal());
+        auto fn_state = new adapter { std::forward<F>(f) };
+        future result(fn_state);
+        std::exchange(state, nullptr)->wait(fn_state); 
         return result;            
     }
 
