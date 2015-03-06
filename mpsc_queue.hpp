@@ -100,7 +100,21 @@ struct mpsc_queue_base
 
         node* next = tail->m_next.load(std::memory_order_relaxed);
 
-        return next ? tail : 0;
+        if (next) {
+            //m_tail.m_next.store(next, std::memory_order_relaxed);
+            return tail;
+        }
+        // caught up with the producers, need to exchange 
+        
+        node* head = m_head.load(std::memory_order_acquire);
+
+        if (tail != head)
+        {   
+            // producer preempted? we are stuck untill it finishes
+            return 0;
+        }
+
+        return tail;
     }
 
     std::atomic<node*>  m_head;
