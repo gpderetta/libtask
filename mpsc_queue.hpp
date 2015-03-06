@@ -22,9 +22,7 @@ struct mpsc_queue_base
         , m_tail(0)
     {}
 
-    void push_unlocked(node* n, bool many = false) {
-        if (!many)
-            n->m_next.store(0, std::memory_order_relaxed);
+    void push_unlocked(node* n) {
         n->m_next.store(0, std::memory_order_relaxed);
         node* prev = m_head.load(std::memory_order_relaxed);
         XASSERT(prev);
@@ -32,9 +30,8 @@ struct mpsc_queue_base
         prev->m_next.store(n, std::memory_order_relaxed);
     }
 
-    void push(node* n, bool many = false) {
-        if (!many)
-            n->m_next.store(0, std::memory_order_relaxed);
+    void push(node* n) {
+        n->m_next.store(0, std::memory_order_relaxed);
         node* prev = m_head.exchange(n);
         XASSERT(prev);
         prev->m_next.store(n, std::memory_order_release);
