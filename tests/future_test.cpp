@@ -160,7 +160,7 @@ int main() {
         gpd::future<int> f[] = { launch(), launch(), launch(), launch() };
         while (std::any_of(std::begin(f), std::end(f),
                            [](auto&& f) { return !f.ready(); })) {
-            wait_any(strategy, f[0], f[1], f[2], f[3]);
+            wait_any(strategy, f);
         }
     };
 

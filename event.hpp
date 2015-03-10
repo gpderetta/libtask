@@ -100,8 +100,8 @@ struct event
         std::size_t signaled = 0;
         std::size_t waited  = 0;
         for (auto  i = begin; i != end; ++i) {
-            if (*i) {
-                ((**i).try_wait(w) ? waited : signaled)++;
+            if (auto e = get_event(*i)) {
+                (e->try_wait(w) ? waited : signaled)++;
             }
         }
         return std::make_pair(signaled, waited);
@@ -126,7 +126,7 @@ struct event
     static std::size_t dismiss_wait_many(waiter * w, Iter begin, Iter end) {
         std::size_t count = 0;
         for (auto  i = begin; i != end; ++i)
-            if (*i) count += (**i).dismiss_wait(w);
+            if (auto e = get_event(*i)) count += e->dismiss_wait(w);
         return count;
     }
 
@@ -363,6 +363,8 @@ private:
 template<class T>
 event* get_event(T& x);
 
+inline event * get_event(event *e) { return e; }
+
 /// ADL customization points for Waiters
 ///
 /// The default implementations expect the wait strategy to match the
@@ -395,8 +397,9 @@ struct CountdownLatch : waiter {
 };
 
 
-template<class, class T = void>
-using void_t = T;
+
+template<class... T>
+using void_t = void;
 
 template<class CountdownLatch, class Waitable>
 auto wait_adl(CountdownLatch& latch, Waitable& e) ->
@@ -406,9 +409,9 @@ auto wait_adl(CountdownLatch& latch, Waitable& e) ->
     latch.wait();
 }
 
-template<class CountdownLatch, class... Waitable>
-void wait_all_adl(CountdownLatch& latch, Waitable&... e) {
-    event * events[] = {get_event(e)...};
+template<class CountdownLatch, class WaitableRange>
+auto wait_all_adl(CountdownLatch& latch, WaitableRange&& events) ->
+    void_t<decltype(std::begin(events)), decltype(std::end(events))> {
     latch.reset();
     std::size_t waited =
         event::wait_many(&latch, std::begin(events), std::end(events)).second;
@@ -416,9 +419,9 @@ void wait_all_adl(CountdownLatch& latch, Waitable&... e) {
         latch.wait(waited);
 }
 
-template<class CountdownLatch, class... Waitable>
-void wait_any_adl(CountdownLatch& latch, Waitable&... e) {
-    event * events[] = {get_event(e)...};
+template<class CountdownLatch, class WaitableRange>
+auto wait_any_adl(CountdownLatch& latch, WaitableRange&& events) ->
+    void_t<decltype(std::begin(events)), decltype(std::end(events))> {
 
     latch.reset();
     std::size_t signaled;
@@ -442,6 +445,20 @@ void wait_any_adl(CountdownLatch& latch, Waitable&... e) {
     if (pending)
         latch.wait(pending);
 
+}
+
+template<class CountdownLatch, class... Waitable>
+auto wait_all_adl(CountdownLatch& latch, Waitable&... e) ->
+    void_t<decltype(get_event(e))...> {
+    event * events[] = {get_event(e)...};
+    return wait_all_adl(events);
+}
+
+template<class CountdownLatch, class... Waitable>
+auto wait_any_adl(CountdownLatch& latch, Waitable&... e) ->
+    void_t<decltype(get_event(e))...> {
+    event * events[] = {get_event(e)...};
+    return wait_any_adl(events);
 }
 /// @} 
 
