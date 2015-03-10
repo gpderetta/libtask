@@ -1,4 +1,5 @@
 #include "future.hpp"
+#include "shared_future.hpp"
 #include "task_waiter.hpp"
 #include "cv_waiter.hpp"
 #include "fd_waiter.hpp"
@@ -212,5 +213,21 @@ int main() {
         assert(v2.get() == 47);
         assert(v3.get() == 52);
     }
-
+    {
+        auto p = promise<int>{} ;
+        auto fut = p.get_future().share();
+        auto forward = [fut] () mutable { return fut.get();  };
+        future<int> f[] = {
+            gpd::async(forward),
+            gpd::async(forward),
+            gpd::async(forward),
+            gpd::async(forward)
+        };
+                
+        p.set_value(42);
+        sem_waiter waiter;
+        wait_all(waiter, f);
+        for(auto&& fut: f)
+            assert(fut.get() == 42);
+    }
 }
