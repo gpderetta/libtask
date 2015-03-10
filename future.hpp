@@ -29,7 +29,8 @@ struct shared_state_union {
         if (s == value_set)
             set_value(std::move(rhs.value));
         else if (s == except_set)
-            set_exception(std::move(rhs.except));
+            set_except(std::move(rhs.except));
+    }
     }
 
     static state_t do_get_state(state_t const& state)  {
