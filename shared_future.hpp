@@ -53,12 +53,16 @@ public:
         : state(new shared_state_multiplexer<T>(std::move(future)) )
         , listener(state->add_listener())
     {
+        assert(listener.valid());
     }
       
     shared_future() : state(0) {}
     shared_future(const shared_future& rhs)
         : state(rhs.state)
-        , listener(state ? state->add_listener() : future<T*>()) {}
+        , listener(state ? state->add_listener() : future<T*>())
+    {
+        assert(listener.valid());
+    }
 
     shared_future(shared_future&& rhs)
         : state(rhs.steal())
@@ -76,7 +80,7 @@ public:
         return state->get();
     }
 
-    bool valid() const { return state; }
+    bool valid() const { return state && listener.valid(); }
     bool is_ready() const { return state && !state->is_empty(); }
 
     template<class WaitStrategy=cv_waiter>
