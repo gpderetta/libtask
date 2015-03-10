@@ -100,7 +100,7 @@ struct shared_state_union {
         set_state(except_set);
     }
 
-    ~shared_state_union() {
+    virtual ~shared_state_union() {
         const auto x = get_state();
         if (x == value_set)
             value.~T();
