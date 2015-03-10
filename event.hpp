@@ -18,7 +18,14 @@ struct delete_waiter_t : waiter {
     virtual ~delete_waiter_t() override {}
 };
 
+struct noop_waiter_t : waiter {
+    virtual void signal(event_ptr p) override { p.release(); };
+    virtual ~noop_waiter_t() override {}
+};
+
 extern delete_waiter_t delete_waiter;
+extern noop_waiter_t noop_waiter;
+
 
 #define GPD_EVENT_IMPL_WAITFREE 1
 #define GPD_EVENT_IMPL_DEKKER_LIKE 2
@@ -49,22 +56,18 @@ struct event
 {
     event(event&) = delete;
     void operator=(event&&) = delete;
-    event(bool empty = true) : state(empty ? 0 : state_t::signaled ) {}
+    event(bool empty = true) : state(empty ? event::empty : signaled ) {}
 
     // Put the event in the signaled state. If the event was in the
     // waited state invoke the callback (and leave the event in the
     // signaled state).
     void signal()  {
-        auto val = get_state();
-        assert(val != state_t::signaled);
-        
-        val = state.exchange(state_t::signaled);
+        auto w = state.exchange(signaled);
 
-        if (val > state_t::signaled) {
-            auto w = reinterpret_cast<waiter*>(val);
-            w->signal(
-                event_ptr (this));
-        }
+        if (w)
+            w->signal(event_ptr (this));
+            
+        
     }
 
     // Register a callback with the event. If the event is already
@@ -72,21 +75,19 @@ struct event
     // signaled state), otherwise put the event to the waited state.
     //
     // Pre: state != waited
-    void wait(waiter * w_) {
-        if (!try_wait(w_))  
-            w_->signal(event_ptr(this));
+    void wait(waiter * w) {
+        if (!try_wait(w))  
+            w->signal(event_ptr(this));
     }
 
     // If the event is in the signaled state, return false, otherwise
     // register a callback with the event and put the event in the
     // waited state, then return true.
     __attribute__((warn_unused_result))
-    bool try_wait(waiter * w_) {
-        assert(w_);
-        auto val = get_state();
-        auto w = reinterpret_cast<std::uintptr_t>(w_);
-        return (val != state_t::signaled &&
-                state.compare_exchange_strong(val, w));
+    bool try_wait(waiter * w) {
+        assert(w);
+        auto old_w = get_waiter();
+        return (old_w != signaled && state.compare_exchange_strong(old_w, w));
     }
       
     // [begin, end) is a range of pointers to events.  For every
@@ -112,10 +113,10 @@ struct event
     // it in the signaled state.
     __attribute__((warn_unused_result))
     bool dismiss_wait(waiter* ) {
-        auto val = get_state();
-        return val == 0 ||
-            ( val != state_t::signaled &&
-              state.compare_exchange_strong(val, state_t::empty));
+        auto w = get_waiter();
+        return w == 0 ||
+            ( w != signaled &&
+              state.compare_exchange_strong(w, empty));
     }
 
     // [begin, end) is a range of pointers to events.
@@ -131,14 +132,11 @@ struct event
 
     virtual ~event()  {}
 private:
-    std::uintptr_t get_state() const { return state.load(std::memory_order_acquire); }
+    waiter* get_waiter() const { return state.load(std::memory_order_acquire); }
     // msb is the signaled bit
-    struct state_t {
-        static const constexpr std::uintptr_t empty = 0;
-        static const constexpr std::uintptr_t signaled = 1;
-        // waited is any value non empty non signaled
-    };
-    std::atomic<std::uintptr_t> state;
+    static constexpr waiter* empty = 0;
+    static constexpr waiter* signaled = &noop_waiter; // waited is any value non empty non signaled
+    std::atomic<waiter*> state;
                              
 };
 
