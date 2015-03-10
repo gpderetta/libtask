@@ -74,19 +74,26 @@ public:
         return *this;
     }      
     ~shared_future() {  }
-    
+
+    template<class WaitStrategy>
+    T& get(WaitStrategy&& strategy) {
+        return *listener.get(strategy);
+    }
+
     T& get() {
-        this->wait();
-        assert(state);
-        return state->get();
+        return *listener.get();
     }
 
     bool valid() const { return state && listener.valid(); }
     bool is_ready() const { return state && !state->is_empty(); }
 
-    template<class WaitStrategy=cv_waiter>
-    void wait(WaitStrategy&& strategy=WaitStrategy{}) {
+    template<class WaitStrategy>
+    void wait(WaitStrategy&& strategy) {
         listener.wait(strategy);
+    }
+
+    void wait() {
+        listener.wait();
     }
 
     template<class F>
