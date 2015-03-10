@@ -82,7 +82,7 @@ auto async(scheduler& target, F&&f)  {
 
     struct {
         scheduler& target;
-        F f;
+        std::decay_t<F> f;
         gpd::promise<decltype(f())> promise;
 
         auto operator()(task_t caller) {

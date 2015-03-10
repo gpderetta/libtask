@@ -326,7 +326,7 @@ template<class F>
 auto async(F&& f)
 {    
     struct {
-        F f;
+        std::decay_t<F> f;
         gpd::promise<decltype(f())> promise;
 
         void operator()() {
