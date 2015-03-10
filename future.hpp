@@ -4,6 +4,7 @@
 #include <future>
 #include <cassert>
 #include <deque>
+#include <thread>
 #include "event.hpp"
 #include "cv_waiter.hpp" // default waiter
 namespace gpd {
@@ -310,6 +311,29 @@ public:
 private:
     shared_state * state;
 };
+
+template<class F>
+auto async(F&& f)
+{    
+    struct {
+        F f;
+        gpd::promise<decltype(f())> promise;
+
+        void operator()() {
+            try {
+                promise.set_value(f());
+            } catch(...)
+            {
+                promise.set_exception(std::current_exception());
+            }
+        }
+    } run { std::forward<F>(f), {} };
+    
+    auto future = run.promise.get_future();
+    std::thread th (std::move(run));
+    th.detach();
+    return future;
+}
 
 }
 #endif
