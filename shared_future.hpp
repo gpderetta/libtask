@@ -65,11 +65,12 @@ public:
     }
 
     shared_future(shared_future&& rhs)
-        : state(rhs.steal())
+        : state(rhs.steal()), listener(std::move(rhs.listener))
     {}
     
     shared_future& operator=(shared_future rhs) {
         state = rhs.steal();
+        listener = std::move(rhs.listener);
         return *this;
     }      
     ~shared_future() {  }
