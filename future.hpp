@@ -31,6 +31,15 @@ struct shared_state_union {
         else if (s == except_set)
             set_except(std::move(rhs.except));
     }
+
+    template<bool x>
+    shared_state_union& operator=(shared_state_union<T, x>&& rhs) {
+        auto s = rhs.get_state();
+        if (s == value_set)
+            set_value(std::move(rhs.value));
+        else if (s == except_set)
+            set_except(std::move(rhs.except));
+        return *this;
     }
 
     static state_t do_get_state(state_t const& state)  {
