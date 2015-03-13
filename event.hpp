@@ -425,26 +425,26 @@ auto wait_all_adl(CountdownLatch& latch, WaitableRange&& events) ->
 template<class CountdownLatch, class WaitableRange>
 auto wait_any_adl(CountdownLatch& latch, WaitableRange&& events) ->
     void_t<decltype(std::begin(events)), decltype(std::end(events))> {
-
     latch.reset();
     std::size_t signaled;
     std::size_t waited;
     std::tie(signaled, waited) =
         event::wait_many(&latch, std::begin(events), std::end(events));
-
+    assert(signaled + waited <=
+           (std::size_t)std::distance(std::begin(events), std::end(events)));
     if (signaled == 0) 
         latch.wait();
         
     const std::size_t dismissed =
         event::dismiss_wait_many(&latch, std::begin(events), std::end(events));
-    
-    std::size_t pending = waited - dismissed;
+    assert(dismissed <= waited);
+    std::ptrdiff_t pending = waited - dismissed;
+    assert(pending >= 0);
     assert( signaled != 0 || pending >= 1 );
     if (signaled == 0) {
         assert(pending >= 1);
         pending -= 1;
     }
-    
     if (pending)
         latch.wait(pending);
 
