@@ -30,7 +30,7 @@ void scheduler_post(scheduler_node& n);
 task_t scheduler_pop();
 
 struct scheduler_waiter : waiter, details::scheduler_node {
-    std::atomic<std::uint32_t> signal_counter = { 0 };
+    std::atomic<std::int32_t> signal_counter = { 0 };
     void reset() { signal_counter.store(0, std::memory_order_relaxed); }
     void signal(event_ptr p) override;
     void wait(std::uint32_t count = 1);

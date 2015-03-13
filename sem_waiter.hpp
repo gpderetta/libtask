@@ -24,7 +24,7 @@ struct sem_waiter : waiter {
     }
     void wait(std::size_t count = 1) {
         auto v = signal_counter += count;
-        if (v)
+        if (v > 0)
             while(auto ret = ::sem_wait(&sem))  {
                 if (ret == -1 && errno == EINTR) continue;
                 assert(ret == 0);

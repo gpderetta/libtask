@@ -39,7 +39,7 @@ struct fd_waiter : waiter {
     void wait(std::size_t count = 1) {
         std::uint64_t buf = 0;
         auto v = signal_counter += count;
-        if (v)
+        if (v > 0)
             while(true)  {
                 auto ret = ::read(fd, &buf, sizeof(buf));
                 if (ret == -1)

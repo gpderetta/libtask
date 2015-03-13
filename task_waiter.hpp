@@ -10,7 +10,7 @@ struct task_waiter : waiter {
     task_t next;
     task_t get() { return std::move(next); }
 
-    std::atomic<std::uint32_t> signal_counter = { 0 };
+    std::atomic<std::int32_t> signal_counter = { 0 };
 
     task_waiter(task_t task) : next(std::move(task)) {}
     
@@ -29,7 +29,7 @@ struct task_waiter : waiter {
         (get(),
          [&](task_t c) {
             next = std::move(c);
-            if ((signal_counter += count) == 0)
+            if ((signal_counter += count) <= 0)
                 get()();
             return c;
         });

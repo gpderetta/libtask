@@ -181,7 +181,7 @@ void details::scheduler_waiter::wait(std::uint32_t count) {
         (details::scheduler_pop(),
          [&](task_t c) {
             task = std::move(c);
-            if ((signal_counter += count) == 0)
+            if ((signal_counter += count) <= 0)
                 details::scheduler_post(*this);
             return c;
         });
