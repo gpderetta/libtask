@@ -66,8 +66,6 @@ struct event
 
         if (w)
             w->signal(event_ptr (this));
-            
-        
     }
 
     // Register a callback with the event. If the event is already
@@ -90,6 +88,17 @@ struct event
         return (old_w != signaled && state.compare_exchange_strong(old_w, w));
     }
       
+    // If the event is in the waited or empty state, put it into the
+    // empty state and return true, otherwise return false and leave
+    // it in the signaled state.
+    __attribute__((warn_unused_result))
+    bool dismiss_wait(waiter* ) {
+        auto w = get_waiter();
+        return w == 0 ||
+            ( w != signaled &&
+              state.compare_exchange_strong(w, empty));
+    }
+
     // [begin, end) is a range of pointers to events.  For every
     // non-null pointer p in range, call p->try_wait(w) Return
     // (signaled, waited), where signaled is number of times
@@ -105,20 +114,8 @@ struct event
             }
         }
         return std::make_pair(signaled, waited);
-
     }
     
-    // If the event is in the waited or empty state, put it into the
-    // empty state and return true, otherwise return false and leave
-    // it in the signaled state.
-    __attribute__((warn_unused_result))
-    bool dismiss_wait(waiter* ) {
-        auto w = get_waiter();
-        return w == 0 ||
-            ( w != signaled &&
-              state.compare_exchange_strong(w, empty));
-    }
-
     // [begin, end) is a range of pointers to events.
     // For every non-null pointer p in range, call p->try_wait(w)
     // Return the number of successfull dismissals.
