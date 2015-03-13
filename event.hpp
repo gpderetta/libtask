@@ -151,12 +151,13 @@ struct event
 {
     event(event&) = delete;
     void operator=(event&&) = delete;
-    event(bool shared = true) : signaled(shared ? state_t::unset : state_t::signaled) {}
-
-    // Notify the consumer thread and relinquish ownership of the
-    // event.
+    event(bool shared = true) {
+        waited.store(0, std::memory_order_relaxed);
+        signaled.store(shared ? state_t::empty : state_t::signaled,
+                       std::memory_order_relaxed);
+    }
+    
     void signal()  {
-
         signaled.store(state_t::critical, std::memory_order_relaxed);
         std::atomic_thread_fence(std::memory_order_seq_cst);
         auto w = waited.load(std::memory_order_acquire);
@@ -168,81 +169,83 @@ struct event
         }
     }
 
-    
-    
-    // Register a consumer callback with the event. Pre: no
-    // dismissiable wait must be pending.
-    void then(waiter * w) {
-        assert(w);
-        then_1(w);
-        std::atomic_thread_fence(std::memory_order_seq_cst);
-        then_2(w);
+    void wait(waiter * w) {
+        if (!try_wait(w))  
+            w->signal(event_ptr(this));
     }
 
-    template<class Iter>
-    static  bool then(waiter * w, Iter begin, Iter end) {
+    bool try_wait(waiter * w) {
+        assert(w);
         bool waited = false;
-        for (auto i = begin; i != end; ++i)
-            if (*i) { waited = true; (**i).then_1(w); }
-        std::atomic_thread_fence(std::memory_order_seq_cst);
-        for (auto i = begin; i != end; ++i)
-            if (*i) { (**i).then_2(w); }
+        if (load_state() == state_t::empty) {
+            this->waited.store(w, std::memory_order_release);
+            std::atomic_thread_fence(std::memory_order_seq_cst);
+            waited = load_state() != state_t::signaled;
+        }
+        was_waited = waited;
         return waited;
     }
-    
-    // Dismiss a previous then(p) or successful try_then.  Returns
-    // true if the dismissal was successful. Otherwise the producer is
-    // in the process of inoking the callback; the consumer must wait
-    // for the signal and now owns the event.  Pre: last prepare_wait
-    // returned true and no retire_wait has been called since.
+
     __attribute__((warn_unused_result))
-    bool dismiss_then(waiter* w) {
-        dismiss_then_1(w);
+    bool dismiss_wait(waiter*) {
+        waited.store(0, std::memory_order_release);
         std::atomic_thread_fence(std::memory_order_seq_cst);
-        return dismiss_then_2(w);
+        return was_waited && load_state() != state_t::fired;
     }
 
     template<class Iter>
-    static std::size_t dismiss_then(waiter * w, Iter begin, Iter end) {
+    static std::pair<std::size_t, std::size_t> wait_many(waiter * w, Iter begin, Iter end) {
+        for (auto i = begin; i != end; ++i) 
+            if (auto e = get_event(*i)) {
+                e->was_waited = e->load_state() == state_t::empty;
+                e->waited.store(w, std::memory_order_release);
+            }
+        std::atomic_thread_fence(std::memory_order_seq_cst);
+
+        std::size_t signaled_count = 0;
+        std::size_t waited_count  = 0;
+
+        for (auto i = begin; i != end; ++i) {
+            if (auto e = get_event(*i)) {
+                bool waited = e->load_state() != state_t::signaled;
+                waited = (e->was_waited &= waited);
+                (waited ? waited_count : signaled_count ) ++;
+            }
+        }
+        return std::make_pair(signaled_count, waited_count);
+    }
+    
+    template<class Iter>
+    static std::size_t dismiss_wait_many(waiter *, Iter begin, Iter end) {
         for (auto  i = begin; i != end; ++i)
-            if (*i) (**i).dismiss_then_1(w);
+            if (auto e = get_event(*i)) {
+                e->waited.store(0, std::memory_order_release);;
+            }
         std::atomic_thread_fence(std::memory_order_seq_cst);
         std::size_t count = 0;
         for (auto  i = begin; i != end; ++i)
-            if (*i) count += !(**i).dismiss_then_2(w);
+            if (auto e = get_event(*i)) {
+                count += e->was_waited && e->load_state() != state_t::fired;
+            }
         return count;
     }
 
     virtual ~event()  {}
 private:
-    void then_1(waiter * w) { waited.store(w, std::memory_order_release); }
-    void then_2(waiter * w) {
+    enum class state_t { empty, critical, signaled, fired };
+
+    state_t load_state() const {
         auto s = signaled.load(std::memory_order_acquire);
         while (s == state_t::critical) {
             s = signaled.load(std::memory_order_acquire);
             __builtin_ia32_pause();
         }
-        if (s == state_t::signaled) {
-            w->signal(event_ptr(this));
-            signaled.store(state_t::fired, std::memory_order_relaxed);
-        }
-
+        return s;
     }
 
-    void dismiss_then_1(waiter*) { waited.store(0, std::memory_order_release); }
-    bool dismiss_then_2(waiter*) {
-        auto s = signaled.load(std::memory_order_acquire);
-        while (s == state_t::critical) {
-            s = signaled.load(std::memory_order_acquire);
-            __builtin_ia32_pause();
-        }
-        return s != state_t::fired;
-    }
-
-    
-    enum class state_t { unset, critical, signaled, fired };
-    std::atomic<waiter*> waited = { 0 };
-    std::atomic<state_t> signaled = { state_t::unset };
+    std::atomic<waiter*> waited;
+    std::atomic<state_t> signaled;
+    bool was_waited;
                              
 } ;
 
