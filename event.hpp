@@ -454,14 +454,14 @@ template<class CountdownLatch, class... Waitable>
 auto wait_all_adl(CountdownLatch& latch, Waitable&... e) ->
     void_t<decltype(get_event(e))...> {
     event * events[] = {get_event(e)...};
-    return wait_all_adl(events);
+    return wait_all_adl(latch, events);
 }
 
 template<class CountdownLatch, class... Waitable>
 auto wait_any_adl(CountdownLatch& latch, Waitable&... e) ->
     void_t<decltype(get_event(e))...> {
     event * events[] = {get_event(e)...};
-    return wait_any_adl(events);
+    return wait_any_adl(latch, events);
 }
 /// @} 
 
