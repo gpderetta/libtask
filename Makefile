@@ -7,12 +7,11 @@ INCLUDE=-I.
 CXX=g++-4.9
 CPPFLAGS=  $(INCLUDE) 
 CXXFLAGS ?= $(FEATURE_FLAGS) $(DEVEL_FLAGS)
-LDFLAGS=       `sdl-config --cflags --libs`
 
 BOOST_PO_LIB=boost_program_options
 BOOST_SYS_LIB=boost_system
 
-PROGRAMS=swarm
+PROGRAMS=
 STATIC_LIBRARIES=libtask 
 
 TESTS=match_test\
@@ -33,16 +32,6 @@ benchmark_test_LIBS=boost_timer\
 libtask_SOURCES=\
 	event.cpp\
 	task.cpp\
-
-swarm_SOURCES=		\
-	swarm.cpp\
-	particle.cpp\
-	gl.cpp\
-	controls.cpp\
-
-swarm_LIBS=	\
-	GL\
-	GLU\
 
 asio_test_LIBS=\
 	$(BOOST_SYS_LIB)\
