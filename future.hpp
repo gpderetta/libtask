@@ -135,8 +135,6 @@ public:
     friend class gpd::promise<T>;
     future(shared_state* state) : state(state) {}
 
-    shared_state * get_shared_state() { return std::exchange(state, nullptr);}
-
     shared_state * state;
 
     shared_state * steal() { return std::exchange(state, nullptr); }

@@ -11,7 +11,7 @@ struct shared_state_multiplexer : waiter, shared_state_union<T> {
     std::deque<promise<bool> > listeners;
     
     shared_state_multiplexer(future<T>&& future) {
-        future.get_shared_state()->wait(this);
+        future.steal()->wait(this);
     }   
     
     auto lock() { return std::unique_lock<std::mutex> (mux);}
