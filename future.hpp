@@ -69,10 +69,6 @@ public:
         return value;
     }
 
-    T&& get_move() {
-        return std::move(get());
-    }
-    
     void set_value(T&& x) {
         new(&value) T (std::move(x));
         set_state(value_set);
@@ -163,7 +159,8 @@ public:
         using gpd::wait;
         if (!ready())
             wait(strategy, *this);
-        return std::unique_ptr<shared_state>(steal())->get_move();
+        std::unique_ptr<shared_state> tstate(steal());
+        return static_cast<T&&>(tstate->get());
     }
 
     bool valid() const { return state; }
