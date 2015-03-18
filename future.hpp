@@ -65,7 +65,7 @@ public:
         auto s = get_state();
         if  (s == except_set)
             std::rethrow_exception(except);
-        assert(s = value_set);
+        assert(s == value_set);
         return value;
     }
 
