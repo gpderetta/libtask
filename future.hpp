@@ -56,9 +56,7 @@ struct shared_state_union {
         state.store(s, std::memory_order_release);
     }
 
-    bool is_empty() const { return get_state() == unset; }
-    bool has_value() const { return get_state() == value_set; }
-    bool has_except() const { return get_state() == except_set; }
+    bool ready() const { return get_state() != unset; }
     
     T& get() {
         auto s = get_state();
@@ -72,14 +70,6 @@ struct shared_state_union {
         return std::move(get());
     }
     
-    T& get_value() {
-        return value;
-    }
-
-    std::exception_ptr& get_except() {
-        return except;
-    }
-
     void set_value(T&& x) {
         new(&value) T (std::move(x));
         set_state(value_set);
@@ -173,8 +163,8 @@ public:
         return std::unique_ptr<shared_state>(steal())->get_move();
     }
 
-    bool valid()    const    { return state; }
-    bool ready() const { return state && !state->is_empty(); }
+    bool valid() const { return state; }
+    bool ready() const { return state && state->ready(); }
 
     
     template<class WaitStrategy=default_waiter>
