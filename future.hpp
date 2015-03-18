@@ -22,6 +22,7 @@ void eval_into(W& w, F&& f, Args&&... args) {
 
 template<class T>
 struct shared_state_union {
+private:
     enum state_t { unset, value_set, except_set };
     std::atomic<state_t> state = { unset };
     union {
@@ -29,6 +30,15 @@ struct shared_state_union {
         std::exception_ptr except;
     };
 
+    state_t get_state() const {
+        return state.load(std::memory_order_acquire);
+    }
+
+    void set_state(state_t s) {       
+        state.store(s, std::memory_order_release);
+    }
+
+public:
     shared_state_union() {}
 
     shared_state_union(shared_state_union<T>&& rhs) {
@@ -48,13 +58,6 @@ struct shared_state_union {
         return *this;
     }
 
-    state_t get_state() const {
-        return state.load(std::memory_order_acquire);
-    }
-
-    void set_state(state_t s) {       
-        state.store(s, std::memory_order_release);
-    }
 
     bool ready() const { return get_state() != unset; }
     
