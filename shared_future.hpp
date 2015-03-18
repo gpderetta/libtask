@@ -46,7 +46,6 @@ class shared_future {
     future<T*> listener;
     friend class future<T>;
 
-    std::shared_ptr<shared_state_multiplexer<T> > steal() { return std::move(state); }
 public:
     friend event * get_event(shared_future& x) { return get_event(x.listener); }
     shared_future(future<T>&& future)
@@ -65,11 +64,11 @@ public:
     }
 
     shared_future(shared_future&& rhs)
-        : state(rhs.steal()), listener(std::move(rhs.listener))
+        : state(std::move(rhs.state)), listener(std::move(rhs.listener))
     {}
     
     shared_future& operator=(shared_future rhs) {
-        state = rhs.steal();
+        state =std::move(rhs.state);
         listener = std::move(rhs.listener);
         return *this;
     }      
