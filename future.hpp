@@ -296,10 +296,9 @@ auto then(Waitable w, F&& f)
     std::unique_ptr<state> p {
         new state {std::move(w), std::forward<F>(f)}};
 
-    if (auto e = get_event(p->w)) 
-        e->wait(p.get());
-    else
-        eval_into(*p, f, std::move(p->w));
+    auto e = get_event(p->w);
+    assert(e);
+    e->wait(p.get());
     return future<T>(p.release());
 }
 
