@@ -48,7 +48,7 @@ class shared_future {
 
     std::shared_ptr<shared_state_multiplexer<T> > steal() { return std::move(state); }
 public:
-    friend event& get_event(shared_future& x) { assert(x->state); return x->state; }
+    friend event * get_event(shared_future& x) { return get_event(x.listener); }
     shared_future(future<T>&& future)
         : state(new shared_state_multiplexer<T>(std::move(future)) )
         , listener(state->add_listener())
@@ -98,7 +98,7 @@ public:
 
     template<class F>
     auto then(F&&f) {
-        listener.then(std::forward<F>(f));
+        return gpd::then(std::move(*this), std::move(f));
     }
 
 };

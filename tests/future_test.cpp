@@ -229,4 +229,10 @@ int main() {
         for(auto&& fut: f)
             assert(fut.get() == 42);
     }
+    {
+        auto f = gpd::async([] { return 42; }).share();
+        auto g = f.then([](auto x) { return x.get() + 10; });
+        assert(g.get() == 52);
+            
+    }
 }
