@@ -83,8 +83,8 @@ public:
         return *listener.get();
     }
 
-    bool valid() const { return state && listener.valid(); }
-    bool is_ready() const { return state && !state->is_empty(); }
+    bool valid() const { return listener.valid(); }
+    bool ready() const { return listener.ready(); }
 
     template<class WaitStrategy>
     void wait(WaitStrategy&& strategy) {
