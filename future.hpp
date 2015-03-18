@@ -20,13 +20,10 @@ void eval_into(W& w, F&& f, Args&&... args) {
 }
 
 
-template<class T, bool atomic = true>
+template<class T>
 struct shared_state_union {
     enum state_t { unset, value_set, except_set };
-    typename std::conditional<
-        atomic, 
-        std::atomic<state_t>,
-        state_t>::type state = { unset };
+    std::atomic<state_t> state = { unset };
     union {
         T value;
         std::exception_ptr except;
@@ -34,8 +31,7 @@ struct shared_state_union {
 
     shared_state_union() {}
 
-    template<bool x>
-    shared_state_union(shared_state_union<T, x>&& rhs) {
+    shared_state_union(shared_state_union<T>&& rhs) {
         auto s = rhs.get_state();
         if (s == value_set)
             set_value(std::move(rhs.value));
@@ -43,8 +39,7 @@ struct shared_state_union {
             set_exception(std::move(rhs.except));
     }
 
-    template<bool x>
-    shared_state_union& operator=(shared_state_union<T, x>&& rhs) {
+    shared_state_union& operator=(shared_state_union<T>&& rhs) {
         auto s = rhs.get_state();
         if (s == value_set)
             set_value(std::move(rhs.value));
@@ -53,28 +48,12 @@ struct shared_state_union {
         return *this;
     }
 
-    static state_t do_get_state(state_t const& state)  {
-        return state;
-    }
-
-    static void do_set_state(state_t& state, state_t s)  {
-        state = s;
-    }
-
-    static state_t do_get_state(std::atomic<state_t> const& state)  {
+    state_t get_state() const {
         return state.load(std::memory_order_acquire);
     }
 
-    static void do_set_state(std::atomic<state_t>& state, state_t s) {
+    void set_state(state_t s) {       
         state.store(s, std::memory_order_release);
-    }
-
-    state_t get_state() const {
-        return do_get_state(state);
-    }
-
-    void set_state(state_t s) {
-        do_set_state(state, s);
     }
 
     bool is_empty() const { return get_state() == unset; }

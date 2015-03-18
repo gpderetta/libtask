@@ -8,7 +8,7 @@ template<class T>
 struct shared_state_multiplexer : waiter, shared_state_union<T> {
 
     std::mutex mux;
-    std::deque<promise<T*> > listeners;
+    std::deque<promise<bool> > listeners;
     
     shared_state_multiplexer(future<T>&& future) {
         future.get_shared_state()->wait(this);
@@ -16,7 +16,7 @@ struct shared_state_multiplexer : waiter, shared_state_union<T> {
     
     auto lock() { return std::unique_lock<std::mutex> (mux);}
     
-    future<T*> add_listener() {
+    future<bool> add_listener() {
         return lock(),  listeners.emplace_back(), listeners.back().get_future();
     }
 
@@ -31,19 +31,15 @@ struct shared_state_multiplexer : waiter, shared_state_union<T> {
         *static_cast<shared_state_union<T>*>(this) = std::move(*original);
         original.reset();
         auto tmp_listeners = (lock(), std::exchange(listeners, {}));
-        if (this->has_value())
-            for(auto&& p : tmp_listeners)
-                p.set_value(&this->value);
-        else
-            for(auto&& p : tmp_listeners)
-                p.set_exception(&this->except);
+        for(auto&& p : tmp_listeners)
+            p.set_value(true);
     }
 };
 
 template<class T>
 class shared_future {
     std::shared_ptr<shared_state_multiplexer<T> > state;
-    future<T*> listener;
+    future<bool> listener;
     friend class future<T>;
 
 public:
@@ -58,7 +54,7 @@ public:
     shared_future() : state(0) {}
     shared_future(const shared_future& rhs)
         : state(rhs.state)
-        , listener(state ? state->add_listener() : future<T*>())
+        , listener(state ? state->add_listener() : future<bool>())
     {
         assert(listener.valid());
     }
@@ -68,7 +64,7 @@ public:
     {}
     
     shared_future& operator=(shared_future rhs) {
-        state =std::move(rhs.state);
+        state = std::move(rhs.state);
         listener = std::move(rhs.listener);
         return *this;
     }      
@@ -76,11 +72,15 @@ public:
 
     template<class WaitStrategy>
     T& get(WaitStrategy&& strategy) {
-        return *listener.get(strategy);
+        if (!ready())
+            wait(strategy);
+        return state->get();
     }
 
     T& get() {
-        return *listener.get();
+        if (!ready())
+            wait();
+        return state->get();
     }
 
     bool valid() const { return listener.valid(); }
