@@ -156,8 +156,6 @@ int main() {
     };
 
     auto test = [&](auto& strategy) {
-
-
         gpd::future<int> f[] = { launch(), launch(), launch(), launch() };
         while (std::any_of(std::begin(f), std::end(f),
                            [](auto&& f) { return !f.ready(); })) {
@@ -197,12 +195,13 @@ int main() {
                 auto c1 = async(pool, [] { yield(); return 20; });
                 auto c2 = async(pool, [] { yield(); return 20; });
                 auto c3 = async(pool, [] { yield(); return 12; });
-                auto c4 = c3.next(
-                    [&](int x)
+                auto c4 = c3.then(
+                    [&](auto x)
                     {
+                        assert(x.ready());
                         yield(); 
                         wait_all(pool, c1, c2);
-                        return x + c1.get(pool) + c2.get(pool);
+                        return x.get(pool) + c1.get(pool) + c2.get(pool);
                     });
                 gpd::wait(pool, c4);
                 return c4.get(pool);

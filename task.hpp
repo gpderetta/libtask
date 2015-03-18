@@ -87,12 +87,7 @@ auto async(scheduler& target, F&&f)  {
 
         auto operator()(task_t caller) {
             yield(target, std::move(caller));
-            try {
-                promise.set_value(f());
-            } catch(...)
-            {
-                promise.set_exception(std::current_exception());
-            }
+            eval_into(promise, f);
             return details::scheduler_pop();
         }
     } run { target, std::forward<F>(f), {} };

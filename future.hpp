@@ -9,6 +9,17 @@
 #include "cv_waiter.hpp" // default waiter
 namespace gpd {
 
+
+template<class W, class F, class... Args>
+void eval_into(W& w, F&& f, Args&&... args) {
+    try {
+        w.set_value(std::forward<F>(f)(std::forward<Args>(args)...));
+    } catch(...) {
+        w.set_exception(std::current_exception());
+    }
+}
+
+
 template<class T, bool atomic = true>
 struct shared_state_union {
     enum state_t { unset, value_set, except_set };
@@ -22,14 +33,14 @@ struct shared_state_union {
     };
 
     shared_state_union() {}
-    
+
     template<bool x>
     shared_state_union(shared_state_union<T, x>&& rhs) {
         auto s = rhs.get_state();
         if (s == value_set)
             set_value(std::move(rhs.value));
         else if (s == except_set)
-            set_except(std::move(rhs.except));
+            set_exception(std::move(rhs.except));
     }
 
     template<bool x>
@@ -38,7 +49,7 @@ struct shared_state_union {
         if (s == value_set)
             set_value(std::move(rhs.value));
         else if (s == except_set)
-            set_except(std::move(rhs.except));
+            set_exception(std::move(rhs.except));
         return *this;
     }
 
@@ -95,7 +106,7 @@ struct shared_state_union {
         set_state(value_set);
     }
 
-    void set_except(std::exception_ptr&& e) {
+    void set_exception(std::exception_ptr&& e) {
         new(&except) std::exception_ptr  {std::move(e) };
         set_state(except_set);
     }
@@ -105,7 +116,7 @@ struct shared_state_union {
         set_state(value_set);
     }
 
-    void set_except(const std::exception_ptr& e) {
+    void set_exception(const std::exception_ptr& e) {
         new(&except) std::exception_ptr {e} ;
         set_state(except_set);
     }
@@ -138,6 +149,16 @@ struct shared_state : event, shared_state_union<T>
 template<class> class promise;
 template<class> class shared_future;
 
+/// Generic 'then' implementation.
+///
+/// Given a waitable w and a function f, when the waitable becomes
+/// ready, evaluate f(w).
+///
+/// Returns a future<result_of_t<F(W)> > representing the delayed
+/// evaluation.
+template<class Waitable, class F>
+auto then(Waitable w, F&& f);
+
 template<class T>
 class future {
 public:
@@ -147,60 +168,6 @@ public:
     future(shared_state* state) : state(state) {}
 
     shared_state * get_shared_state() { return std::exchange(state, nullptr);}
-
-    // hybrid state/waiter/promise for 'then' chaining
-    template<class Fn, class T2>
-    struct fn_adapter : waiter, gpd::shared_state<T2> {
-        using future_type = future<T2>;
-        
-        ~fn_adapter() override {}
-
-        Fn fn;
-        
-        fn_adapter(Fn&& fn)
-            : fn(std::move(fn)) {}
-                
-        fn_adapter(const Fn& fn)
-            : fn(fn) {}
-    };
-
-    static auto as_shared_state(event_ptr p) {
-        return std::unique_ptr<shared_state>(
-            static_cast<shared_state*>(p.release()));
-    }
-
-    // hybrid state/waiter/promise for 'then' chaining
-    template<class Fn, class T2 = std::result_of_t<Fn(T)> >
-    struct next_adapter : fn_adapter<Fn, T2> {
-        using fn_adapter<Fn, T2>::fn_adapter;
-        void signal(event_ptr p) override {
-            auto other = as_shared_state(std::move(p));
-            assert(other && !other->is_empty());
-            if (other->has_except())
-                this->set_except(std::move(other->get_except()));
-            else try {
-                    this->set_value(this->fn(other->get_move()));
-                } catch(...) {
-                    this->set_except(std::current_exception());
-                }                           
-            event::signal(); // may delete this
-        }
-    };
-
-    template<class Fn, class T2 = std::result_of_t<Fn(future<T>)> >
-    struct then_adapter : fn_adapter<Fn, T2> {
-        using fn_adapter<Fn, T2>::fn_adapter;
-        void signal(event_ptr p) override {
-            auto other = as_shared_state(std::move(p));
-            assert(other && !other->is_empty());
-            try {
-                this->set_value(this->fn(std::move(future<T>(p.release()))));
-            } catch(...) {
-                this->set_except(std::current_exception());
-            }                           
-            shared_state::signal(); // may delete this
-        }
-    };
 
     shared_state * state;
 
@@ -241,35 +208,7 @@ public:
 
     template<class F>
     auto then(F&&f) {
-        assert(valid());
-        using adapter = then_adapter<std::decay_t<F> >;
-        using future  = typename adapter::future_type;
-
-        if (!state->is_empty())
-            return future(f(*this));
-
-        auto fn_state = new adapter { std::forward<F>(f) };
-        future result (fn_state);
-        std::exchange(state, nullptr)->wait(fn_state); 
-        return result;            
-    }
-
-    template<class F>
-    auto next(F&&f) {
-        // next can be implemented as a thin wrapper over then', but
-        // this can be more efficient 
-        assert(valid());
-        using adapter = next_adapter<std::decay_t<F> >;
-        using future = typename adapter::future_type;
-        
-        if (state->has_value())
-            return future(f(std::move(state->get_value())));
-        if (state->has_except())
-            return future(steal());
-        auto fn_state = new adapter { std::forward<F>(f) };
-        future result(fn_state);
-        std::exchange(state, nullptr)->wait(fn_state); 
-        return result;            
+        return gpd::then(std::move(*this), std::forward<F>(f));
     }
 
     shared_future<T> share();
@@ -286,7 +225,7 @@ public:
     promise(promise&& x) : state(x.state) { x.state=0; }
     promise& operator=(const promise&) = delete;
     promise& operator=(promise&& x) { std::swap(state, x.state); return *this; }
-
+    
     future get_future() {
         assert(state);
         //std::cerr << "get_future: " << ::pthread_self() << ' ' <<this << ' ' << state << '\n';
@@ -310,7 +249,7 @@ public:
             throw std::future_error (std::future_errc::promise_already_satisfied);
 
         auto tstate = std::exchange(state, nullptr);
-        tstate->set_except(std::make_exception_ptr(std::forward<E>(e)));
+        tstate->set_exception(std::make_exception_ptr(std::forward<E>(e)));
         tstate->signal();
     }
 
@@ -322,21 +261,14 @@ private:
     shared_state * state;
 };
 
+
 template<class F>
 auto async(F&& f)
 {    
     struct {
         std::decay_t<F> f;
         gpd::promise<decltype(f())> promise;
-
-        void operator()() {
-            try {
-                promise.set_value(f());
-            } catch(...)
-            {
-                promise.set_exception(std::current_exception());
-            }
-        }
+        void operator()() { eval_into(promise, f);  }
     } run { std::forward<F>(f), {} };
     
     auto future = run.promise.get_future();
@@ -344,6 +276,34 @@ auto async(F&& f)
     th.detach();
     return future;
 }
+
+template<class Waitable, class F>
+auto then(Waitable w, F&& f)
+{
+    using T = decltype(f(std::move(w)));
+    struct state : waiter, shared_state<T> {
+        state(Waitable&& w, F&& f)
+            : w(std::move(w)), f(std::forward<F>(f)){}
+        Waitable w;
+        std::decay_t<F> f;
+        void signal(event_ptr p) override {
+            p.release();
+            eval_into(*this, f, std::move(w));
+            shared_state<T>::signal();
+        }
+    };
+
+    std::unique_ptr<state> p {
+        new state {std::move(w), std::forward<F>(f)}};
+
+    if (auto e = get_event(p->w)) 
+        e->wait(p.get());
+    else
+        eval_into(*p, f, std::move(p->w));
+    return future<T>(p.release());
+}
+
+
 
 }
 #endif
