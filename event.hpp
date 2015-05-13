@@ -54,6 +54,8 @@ struct event
     void operator=(event&&) = delete;
     event(bool signaled = false) : state(signaled ? event::signaled : empty ) {}
 
+    bool ready() const { return get_waiter() == signaled; }
+    
     // Put the event in the signaled state. If the event was in the
     // waited state invoke the callback (and leave the event in the
     // signaled state).
@@ -161,6 +163,8 @@ struct event
         pair.signaled.store(signaled ? state_t::signaled : state_t::empty,
                        std::memory_order_relaxed);
     }
+
+    bool ready() const { return load_state() == state_t::signaled; }
     
     void signal()  {
 #if    GPD_EVENT_IMPL == GPD_EVENT_IMPL_DEKKER_LIKE
