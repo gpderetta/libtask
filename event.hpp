@@ -52,7 +52,7 @@ struct event
 {
     event(event&) = delete;
     void operator=(event&&) = delete;
-    event(bool empty = true) : state(empty ? event::empty : signaled ) {}
+    event(bool signaled = false) : state(signaled ? event::signaled : empty ) {}
 
     // Put the event in the signaled state. If the event was in the
     // waited state invoke the callback (and leave the event in the
@@ -156,9 +156,9 @@ struct event
 {
     event(event&) = delete;
     void operator=(event&&) = delete;
-    event(bool shared = true) {
+    event(bool signaled = false) {
         pair.waited.store(0, std::memory_order_relaxed);
-        pair.signaled.store(shared ? state_t::empty : state_t::signaled,
+        pair.signaled.store(signaled ? state_t::signaled : state_t::empty,
                        std::memory_order_relaxed);
     }
     
