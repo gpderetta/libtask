@@ -25,7 +25,7 @@ TESTS=match_test\
 	quote_test \
 	benchmark_test\
 	variant_test\
-
+	dynamic_test\
 
 pipe_test_LIBS=boost_regex
 benchmark_test_LIBS=boost_timer\
