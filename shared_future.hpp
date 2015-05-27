@@ -5,31 +5,34 @@
     
 namespace gpd {
 template<class T>
-struct shared_state_multiplexer : waiter, shared_state_union<T> {
-
+struct shared_state_multiplexer : waiter {
+    gpd::future<T> future;
     std::mutex mux;
     std::deque<promise<bool> > listeners;
+    expected<T> value;
     
-    shared_state_multiplexer(future<T>&& future) {
-        future.steal()->wait(this);
+    shared_state_multiplexer(gpd::future<T>&& f) : future(std::move(f)) {
+        assert(future.valid());
+        if (!future.ready())
+            get_event(future)->wait(this);
+        else
+            do_set();
     }   
+
+    void do_set() {
+        try { value.set_value(future.get()); }
+        catch(...) { value.set_exception(std::current_exception()); }
+    }
     
     auto lock() { return std::unique_lock<std::mutex> (mux);}
     
-    future<bool> add_listener() {
+    gpd::future<bool> add_listener() {
         return lock(),  listeners.emplace_back(), listeners.back().get_future();
     }
 
-    static auto as_shared_state(event_ptr p) {
-        return std::unique_ptr<gpd::shared_state_union<T> >(
-            static_cast<gpd::shared_state<T>*>(p.release()));
-    }
-    
     void signal(event_ptr other) override {
-        auto original = as_shared_state(std::move(other)); // deleted at end of scope
-        assert(original);
-        *static_cast<shared_state_union<T>*>(this) = std::move(*original);
-        original.reset();
+        other.release();
+        do_set();
         auto tmp_listeners = (lock(), std::exchange(listeners, {}));
         for(auto&& p : tmp_listeners)
             p.set_value(true);
@@ -74,13 +77,13 @@ public:
     T& get(WaitStrategy&& strategy) {
         if (!ready())
             wait(strategy);
-        return state->get();
+        return state->value.get();
     }
 
     T& get() {
         if (!ready())
             wait();
-        return state->get();
+        return state->value.get();
     }
 
     bool valid() const { return listener.valid(); }
