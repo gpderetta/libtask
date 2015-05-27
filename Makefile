@@ -26,6 +26,7 @@ TESTS=match_test\
 	benchmark_test\
 	variant_test\
 	dynamic_test\
+	any_future_test\
 
 pipe_test_LIBS=boost_regex
 benchmark_test_LIBS=boost_timer\
@@ -41,6 +42,9 @@ asio_test_LIBS=\
 	task\
 
 future_test_LIBS=\
+	task\
+
+any_future_test_LIBS=\
 	task\
 
 include Makefile.common
