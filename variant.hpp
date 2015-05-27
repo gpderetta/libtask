@@ -6,6 +6,7 @@
 
 namespace gpd {
 
+struct blank {};
 template<class>
 struct is_variant : std::false_type {};
 template<class...T>
@@ -46,9 +47,16 @@ struct variant : private details::assigner<0, T...>
     }
 
     template<class T2>
-    static int constexpr index_of() {
+    static int constexpr index_of(T2* = 0) {
         return details::assigner<0, T...>::get_index((T2*)0);
     }
+
+    template<class T2>
+    bool is(T2* = 0) const {
+        return index_of<T2>() == index();
+    }
+
+    int index() const { return _discriminant; }
 
     template<class T2>
     T2& get(const T2* = 0) 
@@ -87,7 +95,6 @@ struct variant : private details::assigner<0, T...>
         rhs.visit([&] (auto&& x){ this->assign(x); });
         return *this;  
     }
-
 
     variant& operator=(const variant& rhs)
     {
@@ -148,8 +155,6 @@ struct variant : private details::assigner<0, T...>
         return details::do_visit<R>(_discriminant, *this, v);
     }
 
-    
-    
     template<class V>
     decltype(auto) map(V&& v) const
     {
@@ -173,7 +178,7 @@ struct variant : private details::assigner<0, T...>
     {
         return !(lhs == rhs);
     }
-            
+
 private:
     void * buffer() { return _buffer; }
     const void * buffer() const { return _buffer; }
