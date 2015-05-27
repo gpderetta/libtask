@@ -21,7 +21,25 @@ void eval_into(W& w, F&& f, Args&&... args) {
     }
 }
 
+template<class> class shared_state;
+template<class> class promise;
+template<class T> class future;
+template<class> class shared_future;
 
+/// Generic 'then' implementation.
+///
+/// Given a waitable w and a function f, when the waitable becomes
+/// ready, evaluate f(w).
+///
+/// Concept Requirements:
+/// 
+///   event * e = get_value(w)
+///   using T = decltype(f(std::move(w)))
+///
+/// Returns a future<T> representing the delayed
+/// evaluation.
+template<class Waitable, class F>
+auto then(Waitable w, F&& f);
 
 template<class T>
 using ptr = T*;
@@ -84,19 +102,6 @@ struct shared_state : event, expected<T>
     
     virtual ~shared_state() override { }
 };
-
-template<class> class promise;
-template<class> class shared_future;
-
-/// Generic 'then' implementation.
-///
-/// Given a waitable w and a function f, when the waitable becomes
-/// ready, evaluate f(w).
-///
-/// Returns a future<result_of_t<F(W)> > representing the delayed
-/// evaluation.
-template<class Waitable, class F>
-auto then(Waitable w, F&& f);
 
 template<class T>
 class future {
