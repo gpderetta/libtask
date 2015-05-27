@@ -8,6 +8,7 @@
 #include "event.hpp"
 #include "waiter.hpp"
 #include "forwarding.hpp"
+#include "variant.hpp"
 namespace gpd {
 
 
@@ -21,96 +22,65 @@ void eval_into(W& w, F&& f, Args&&... args) {
 }
 
 
+
 template<class T>
-struct shared_state_union {
+using ptr = T*;
+
+/// This is not (yet) like the proposed std::experimental::expected,
+/// but it might in the future.
+template<class T>
+struct expected {
+    variant<blank, T, std::exception_ptr > value;
 private:
-    enum state_t { unset, value_set, except_set };
-    std::atomic<state_t> state = { unset };
-    union {
-        T value;
-        std::exception_ptr except;
-    };
-
-    state_t get_state() const {
-        return state.load(std::memory_order_acquire);
-    }
-
-    void set_state(state_t s) {       
-        state.store(s, std::memory_order_release);
-    }
 
 public:
-    shared_state_union() {}
+    expected() {}
 
-    shared_state_union(shared_state_union<T>&& rhs) {
-        auto s = rhs.get_state();
-        if (s == value_set)
-            set_value(std::move(rhs.value));
-        else if (s == except_set)
-            set_exception(std::move(rhs.except));
-    }
+    expected(expected<T>&& rhs)
+        : value(std::move(rhs.value))
+    { }
 
-    shared_state_union& operator=(shared_state_union<T>&& rhs) {
-        auto s = rhs.get_state();
-        if (s == value_set)
-            set_value(std::move(rhs.value));
-        else if (s == except_set)
-            set_exception(std::move(rhs.except));
+    expected& operator=(expected<T>&& rhs) {
+        value = (std::move(rhs.value));
         return *this;
     }
 
-
-    bool ready() const { return get_state() != unset; }
+    bool ready() const { return !value.is(ptr<blank>{}); }
     
     T& get() {
-        auto s = get_state();
-        if  (s == except_set)
-            std::rethrow_exception(except);
-        assert(s == value_set);
-        return value;
+        assert(ready());
+        if (value.is(ptr<std::exception_ptr>{}))
+            std::rethrow_exception(value.get(ptr<std::exception_ptr>{}));
+        return value.get(ptr<T>{});
     }
 
     void set_value(T&& x) {
-        new(&value) T (std::move(x));
-        set_state(value_set);
+        value = std::move(x);
     }
 
     void set_exception(std::exception_ptr&& e) {
-        new(&except) std::exception_ptr  {std::move(e) };
-        set_state(except_set);
+        value = std::move(e);
     }
 
     void set_value(const T&& x) {
-        new(&value) T {x};
-        set_state(value_set);
+        value = x;
     }
 
     void set_exception(const std::exception_ptr& e) {
-        new(&except) std::exception_ptr {e} ;
-        set_state(except_set);
-    }
-
-    virtual ~shared_state_union() {
-        const auto x = get_state();
-        if (x == value_set)
-            value.~T();
-        else if (x == except_set)
-            except.~exception_ptr();
+        value = e;
     }
 };
 
-
 template<class T>
-struct shared_state : event, shared_state_union<T>
+struct shared_state : event, expected<T>
 {
     shared_state()  {}
-    shared_state(T value) : event(false) {
-        this->set_value(std::move(value));
-    }
+    shared_state(T value) 
+        : event(true), expected<T>(std::move(value)) { }
 
-    shared_state(std::exception_ptr except) : event(false) {
-        this->set_exception(std::move(except));
-    }
+    bool ready() const { return event::ready(); }
+    shared_state(std::exception_ptr except)
+        : event(true), expected<T>(std::move(except)) { }
     
     virtual ~shared_state() override { }
 };
