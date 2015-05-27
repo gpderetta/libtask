@@ -129,52 +129,46 @@ auto then(Waitable w, F&& f);
 
 template<class T>
 class future {
-public:
+    struct shared_state_deleter {
+        void operator()(event* e) {
+            e->wait(&delete_waiter);
+        }
+    };
     using shared_state = gpd::shared_state<T>;
-    using promise = gpd::promise<T>;
-    friend class gpd::promise<T>;
-    future(shared_state* state) : state(state) {}
+    using shared_state_ptr = std::unique_ptr<shared_state, shared_state_deleter>;
+    shared_state_ptr state;
 
-    shared_state * state;
-
-    shared_state * steal() { return std::exchange(state, nullptr); }
 public:
-    // a ready future
+
+    explicit future(shared_state * state) : state(state) {}
+
+    future() {}
     future(T value) : state(new shared_state{std::move(value)}) {}
-    future() : state(0) {}
-    future(const future&) = delete;
-    future(future&& x) : state(x.steal()) {  }
-    future& operator=(const future&) = delete;
-    future& operator=(future&& x) { std::swap(state, x.state); return *this; }
 
-    friend event* get_event(future& x) { return x.state;  }
-
-    ~future() {  if (state) state->wait(&delete_waiter);   }
-
-    template<class WaitStrategy=default_waiter_t>
+    template<class WaitStrategy=default_waiter_t&>
     T get(WaitStrategy&& strategy = default_waiter) {
-        using gpd::wait;
-        if (!ready())
-            wait(strategy, *this);
-        std::unique_ptr<shared_state> tstate(steal());
+        wait(strategy);
+        auto tstate = std::move(state);
         return static_cast<T&&>(tstate->get());
     }
 
-    bool valid() const { return state; }
-    bool ready() const { return state && state->ready(); }
+    bool valid() const { return !!state; }
+    bool ready() const { return valid() && state->ready(); }
 
-    
     template<class WaitStrategy=default_waiter_t&>
     void wait(WaitStrategy&& strategy=default_waiter) {
         assert(valid());
         if (!ready())
-            wait(strategy, *this);
+            gpd::wait(strategy, *this);
     }
+
 
     template<class F>
     auto then(F&&f) {
         return gpd::then(std::move(*this), std::forward<F>(f));
     }
+
+    friend event* get_event(future&x) { return x.state.get(); }
 
     shared_future<T> share();
 };
@@ -193,12 +187,10 @@ public:
     
     future get_future() {
         assert(state);
-        //std::cerr << "get_future: " << ::pthread_self() << ' ' <<this << ' ' << state << '\n';
-        return { state };
+        return future{ state } ;
     }
     
     void set_value(T x) {
-        //std::cerr << "set_value: " << ::pthread_self() << ' ' << this << ' ' << state << '\n';
         // we can't distinguish the ''no state'' state
         if (!state)
             throw std::future_error (std::future_errc::promise_already_satisfied);
