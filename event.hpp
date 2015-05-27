@@ -293,8 +293,8 @@ private:
 // object. The lifetime of the result is the same as for 'x'. Only
 // prepare_wait and retire_wait should be called on the result as x
 // retains ownership of the object.
-template<class T>
-event* get_event(T& x);
+// template<class T>
+// event* get_event(T& x);
 
 inline event * get_event(event *e) { return e; }
 
