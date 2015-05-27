@@ -7,6 +7,7 @@
 #include <thread>
 #include "event.hpp"
 #include "waiter.hpp"
+#include "forwarding.hpp"
 namespace gpd {
 
 
