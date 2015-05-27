@@ -6,7 +6,7 @@
 #include <deque>
 #include <thread>
 #include "event.hpp"
-#include "cv_waiter.hpp" // default waiter
+#include "waiter.hpp"
 namespace gpd {
 
 
@@ -139,7 +139,6 @@ public:
 
     shared_state * steal() { return std::exchange(state, nullptr); }
 public:
-    using default_waiter = cv_waiter;
     // a ready future
     future(T value) : state(new shared_state{std::move(value)}) {}
     future() : state(0) {}
@@ -152,8 +151,8 @@ public:
 
     ~future() {  if (state) state->wait(&delete_waiter);   }
 
-    template<class WaitStrategy=default_waiter>
-    T get(WaitStrategy&& strategy = WaitStrategy{}) {
+    template<class WaitStrategy=default_waiter_t>
+    T get(WaitStrategy&& strategy = default_waiter) {
         using gpd::wait;
         if (!ready())
             wait(strategy, *this);
@@ -165,9 +164,8 @@ public:
     bool ready() const { return state && state->ready(); }
 
     
-    template<class WaitStrategy=default_waiter>
-    void wait(WaitStrategy&& strategy=WaitStrategy{}) {
-        using gpd::wait;
+    template<class WaitStrategy=default_waiter_t&>
+    void wait(WaitStrategy&& strategy=default_waiter) {
         assert(valid());
         if (!ready())
             wait(strategy, *this);

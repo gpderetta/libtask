@@ -34,6 +34,7 @@ benchmark_test_LIBS=boost_timer\
 libtask_SOURCES=\
 	event.cpp\
 	task.cpp\
+	waiter.cpp\
 
 asio_test_LIBS=\
 	$(BOOST_SYS_LIB)\
