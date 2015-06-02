@@ -6,7 +6,7 @@
 
 namespace gpd {
 
-struct blank {};
+struct empty {};
 template<class>
 struct is_variant : std::false_type {};
 template<class...T>

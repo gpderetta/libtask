@@ -48,7 +48,7 @@ using ptr = T*;
 /// but it might in the future.
 template<class T>
 struct expected {
-    variant<blank, T, std::exception_ptr > value;
+    variant<empty, T, std::exception_ptr > value;
 private:
 
 public:
@@ -63,7 +63,7 @@ public:
         return *this;
     }
 
-    bool ready() const { return !value.is(ptr<blank>{}); }
+    bool ready() const { return !value.is(ptr<empty>{}); }
     
     T& get() {
         assert(ready());
