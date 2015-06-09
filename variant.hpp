@@ -6,55 +6,59 @@
 
 namespace gpd {
 
-struct empty {};
+template<class T>
+struct static_ { static T value; };
+
+template<class T>
+T static_<T>::value ={};
+struct empty_t {
+
+    constexpr bool operator==(empty_t) { return true; }
+    constexpr bool operator<(empty_t) { return false; }
+};
+
+namespace { constexpr const empty_t& empty = static_<empty_t>::value; }
 template<class>
 struct is_variant : std::false_type {};
 template<class...T>
 struct is_variant<variant<T...>> : std::true_type {};
  
 template<class... T>
-struct variant : private details::assigner<0, T...>
+struct variant : private details::assigner<0, empty_t, T...>
 {
+    variant() : _discriminant(0) {}
+
+    ~variant() { reset(); }
     
-    variant() : _discriminant(0)
-    {
-        visit([](auto& x) { new (&x) std::decay_t<decltype(x)>(); });
-    }
-
-    ~variant() 
-    {
-        unsafe_destroy();
-    }
-
-    template<class T2, class = std::enable_if_t<!is_variant<std::decay_t<T2>>::value> >
-    variant(T2&& x) { unsafe_assign(std::forward<T2>(x)); }                
+    template<class T2,
+             class = std::enable_if_t<!is_variant<std::decay_t<T2> >::value> >
+    variant(T2&& x) : _discriminant(0) { unsafe_assign(std::forward<T2>(x)); }
 
     template<class... T2>
-    variant(variant<T2...>&& rhs) 
-    {
+    variant(variant<T2...>&& rhs) : _discriminant(0) {
         rhs.visit([&](auto& x){ this->unsafe_assign(std::move(x)); } );
     }
 
     template<class... T2>
-    variant(const variant<T2...>& rhs) 
-    {
+    variant(const variant<T2...>& rhs) : _discriminant(0) {
         rhs.visit([&](auto& x){ this->unsafe_assign(x); } );
     }
 
-    variant(const variant& rhs) 
-    {
+    variant(const variant& rhs) : _discriminant(0) {
         rhs.visit([&](auto& x){ this->unsafe_assign(x); } );
     }
 
     template<class T2>
     static int constexpr index_of(T2* = 0) {
-        return details::assigner<0, T...>::get_index((T2*)0);
+        return details::assigner<0, empty_t, T...>::get_index((T2*)0);
     }
 
     template<class T2>
     bool is(T2* = 0) const {
         return index_of<T2>() == index();
     }
+
+    bool empty() const { return _discriminant == 0; }
 
     int index() const { return _discriminant; }
 
@@ -102,7 +106,7 @@ struct variant : private details::assigner<0, T...>
             rhs.visit([&](auto& x){ this->get(&x) = x; } );
         else {
             // absolutely not exception safe
-            unsafe_destroy();
+            reset();
             rhs.visit([&](auto& x){ this->unsafe_assign(x); } );
         }
         return *this;
@@ -113,8 +117,7 @@ struct variant : private details::assigner<0, T...>
         if (rhs._discriminant == _discriminant)
             rhs.visit([&](auto& x){ this->get(&x) = std::move(x); } );
         else {
-            // absolutely not exception safe
-            unsafe_destroy();
+            reset();
             rhs.visit([&](auto& x){ this->unsafe_assign(std::move(x)); } );
         }
         return *this;
@@ -123,22 +126,21 @@ struct variant : private details::assigner<0, T...>
     template<class T2>
     void assign(T2&& x) 
     {
-        // absolutely not exception safe
-        unsafe_destroy();
+        reset();
         unsafe_assign(std::forward<T2>(x));
     }
 
     template<class V>
     decltype(auto) visit(V&& v)
     {
-        using R = std::common_type_t<decltype(v(std::declval<T&>()))...>;
+        using R = std::common_type_t<decltype(v(std::declval<empty_t&>())), decltype(v(std::declval<T&>()))...>;
         return details::do_visit<R>(_discriminant, *this, v);
     }
 
     template<class V>
     decltype(auto) visit(V&& v) const
     {
-        using R = std::common_type_t<decltype(v(std::declval<const T&>()))...>;
+        using R = std::common_type_t<decltype(v(std::declval<const empty_t&>())), decltype(v(std::declval<const T&>()))...>;
         return details::do_visit<R>(_discriminant, *this, v);
     }
 
@@ -151,14 +153,16 @@ struct variant : private details::assigner<0, T...>
     template<class V>
     decltype(auto) map(V&& v)
     {
-        using R = details::to_variant<decltype(v(std::declval<T&>()))...>;
+        using R = details::to_variant<decltype(v(std::declval<empty_t&>())),
+                                      decltype(v(std::declval<T&>()))...>;
         return details::do_visit<R>(_discriminant, *this, v);
     }
 
     template<class V>
     decltype(auto) map(V&& v) const
     {
-        using R = details::to_variant<decltype(v(std::declval<const T&>()))...>;
+        using R = details::to_variant<decltype(v(std::declval<const empty_t&>())),
+                                      decltype(v(std::declval<const T&>()))...>;
         return details::do_visit<R>(_discriminant, this, v);
     }
 
@@ -179,22 +183,25 @@ struct variant : private details::assigner<0, T...>
         return !(lhs == rhs);
     }
 
+    void reset() noexcept { 
+        visit([](auto& x) { using T3 = std::decay_t<decltype(x)>; x.~T3(); });
+        _discriminant = 0;
+    }
+
 private:
     void * buffer() { return _buffer; }
     const void * buffer() const { return _buffer; }
-
 
     int _discriminant;        
     enum { size = details::const_max(sizeof(T)...) };
     enum { alignment = details::const_max(alignof(T)...) };
     alignas(alignment) char _buffer[size]; 
 
-    void unsafe_destroy() { 
-        visit([](auto& x) { using T3 = std::decay_t<decltype(x)>; x.~T3(); });
-    }
-
+    // reset must be called or the discriminant must be otherwise
+    // 0. On exception the discriminant will be 0.
     template<class T2>
     void unsafe_assign(T2&& x) {
+        assert(_discriminant == 0);
         _discriminant = this->do_assign(_buffer, std::forward<T2>(x));
     }
 

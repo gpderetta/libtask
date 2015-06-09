@@ -5,6 +5,7 @@
 namespace gpd {
 template<class...>
 struct variant;
+struct empty_t;
 
 namespace details {
 
@@ -17,6 +18,7 @@ struct cons : T {
 struct base {
     template<class T>
     static std::false_type test(T*);
+    static std::true_type test(empty_t*);
 };
 
 template<class H, class... X>
@@ -100,14 +102,20 @@ R evaluate(Variant&& v, F&& f) {
 template<class R, class... T, class F>
 R do_visit(int discriminant, variant<T...>&v , F&&f) {
     using J = R(variant<T...>&, F&&);
-    static constexpr J * table[] = { &evaluate<variant<T...>&, R, T, F>... };
+    static constexpr J * table[] = {
+        &evaluate<variant<T...>&, R, empty_t, F>,
+        &evaluate<variant<T...>&, R, T, F>...
+    };
     return table[discriminant](v, f);
 }
 
 template<class R, class... T, class F>
 R do_visit(int discriminant, const variant<T...>&v , F&&f) {
     using J = R(const variant<T...>&, F&&);
-    static constexpr J * table[] = { &evaluate<const variant<T...>&, R, T, F>... };
+    static constexpr J * table[] = {
+        &evaluate<const variant<T...>&, R, empty_t, F>,
+        &evaluate<const variant<T...>&, R, T, F>...
+    };
     return table[discriminant](v, f);
 }
 
