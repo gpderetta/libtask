@@ -6,22 +6,21 @@
 namespace gpd {
 template<class T>
 struct shared_state_multiplexer : waiter {
-    gpd::future<T> future;
+    shared_state_ptr<T> future;
     std::mutex mux;
     std::deque<promise<bool> > listeners;
-    expected<T> value;
+    variant<T, std::exception_ptr> value;
     
-    shared_state_multiplexer(gpd::future<T>&& f) : future(std::move(f)) {
-        assert(future.valid());
-        if (!future.ready())
-            get_event(future)->wait(this);
+    shared_state_multiplexer(shared_state_ptr<T> f) : future(std::move(f)) {
+        assert(!!future);
+        if (!future->ready())
+            future->wait(this);
         else
             do_set();
     }   
 
     void do_set() {
-        try { value.set_value(future.get()); }
-        catch(...) { value.set_exception(std::current_exception()); }
+        value = std::move(*future).storage();
     }
     
     auto lock() { return std::unique_lock<std::mutex> (mux);}
@@ -45,13 +44,18 @@ class shared_future {
     future<bool> listener;
     friend class future<T>;
 
-public:
-    friend event * get_event(shared_future& x) { return get_event(x.listener); }
-    shared_future(future<T>&& future)
+    shared_future(shared_state_ptr<T> future)
         : state(new shared_state_multiplexer<T>(std::move(future)) )
         , listener(state->add_listener())
     {
         assert(listener.valid());
+    }
+
+public:
+    friend event * get_event(shared_future& x) { return get_event(x.listener); }
+    shared_future(future<T>&& future)
+        : shared_future(future.shared().state)
+    {
     }
       
     shared_future() : state(0) {}
@@ -83,7 +87,7 @@ public:
     T& get() {
         if (!ready())
             wait();
-        return state->value.get();
+        return state->value.get(ptr<T>{});
     }
 
     bool valid() const { return listener.valid(); }
@@ -106,6 +110,6 @@ public:
 };
 
 template<class T>
-shared_future<T> future<T>::share() { return { std::move(*this) }; }
+shared_future<T> future<T>::share() { return { std::move(this->state) }; }
 }
 #endif

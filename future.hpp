@@ -44,79 +44,73 @@ auto then(Waitable w, F&& f);
 template<class T>
 using ptr = T*;
 
-/// This is not (yet) like the proposed std::experimental::expected,
-/// but it might in the future.
 template<class T>
-struct expected {
-    variant<empty, T, std::exception_ptr > value;
-private:
-
+class shared_state : public event
+{
+    variant<T, std::exception_ptr > storage_;
 public:
-    expected() {}
+    shared_state() {}
+    shared_state(T value) 
+        : event(true), storage_(std::move(value)) { }
+    shared_state(std::exception_ptr except) 
+        : event(true), storage_(std::move(except)) { }
+    
+    shared_state(shared_state&&) = default;
+    shared_state& operator=(shared_state&&) = default;
+    
+    using event::ready;
+    bool has_exception() const { return ready() && storage_.is(ptr<std::exception_ptr>{}); }
+    bool has_value() const { return storage_.is(ptr<T>{}); }
 
-    expected(expected<T>&& rhs)
-        : value(std::move(rhs.value))
-    { }
-
-    expected& operator=(expected<T>&& rhs) {
-        value = (std::move(rhs.value));
-        return *this;
-    }
-
-    bool ready() const { return !value.is(ptr<empty>{}); }
+    auto storage() && { return std::move(storage_); }
     
     T& get() {
         assert(ready());
-        if (value.is(ptr<std::exception_ptr>{}))
-            std::rethrow_exception(value.get(ptr<std::exception_ptr>{}));
-        return value.get(ptr<T>{});
+        if (has_exception())
+            std::rethrow_exception(get_exception());
+        return storage_.get(ptr<T>{});
+    }
+
+    std::exception_ptr& get_exception() {
+        assert(ready());
+        return storage_.get(ptr<std::exception_ptr>{});
     }
 
     void set_value(T&& x) {
-        value = std::move(x);
+        storage_ = std::move(x);
     }
 
     void set_exception(std::exception_ptr&& e) {
-        value = std::move(e);
+        storage_ = std::move(e);
     }
 
     void set_value(const T&& x) {
-        value = x;
+        storage = x;
     }
 
     void set_exception(const std::exception_ptr& e) {
-        value = e;
+        storage = e;
     }
-};
-
-template<class T>
-struct shared_state : event, expected<T>
-{
-    shared_state()  {}
-    shared_state(T value) 
-        : event(true), expected<T>(std::move(value)) { }
-
-    bool ready() const { return event::ready(); }
-    shared_state(std::exception_ptr except)
-        : event(true), expected<T>(std::move(except)) { }
-    
+        
     virtual ~shared_state() override { }
 };
 
+struct shared_state_deleter {
+    void operator()(event* e) {
+        e->wait(&delete_waiter);
+    }
+};
+template<class T>
+using shared_state_ptr = std::unique_ptr<shared_state<T>, shared_state_deleter>;
+
 template<class T>
 class future {
-    struct shared_state_deleter {
-        void operator()(event* e) {
-            e->wait(&delete_waiter);
-        }
-    };
     using shared_state = gpd::shared_state<T>;
-    using shared_state_ptr = std::unique_ptr<shared_state, shared_state_deleter>;
-    shared_state_ptr state;
+    shared_state_ptr<T> state;
 
 public:
 
-    explicit future(shared_state * state) : state(state) {}
+    explicit future(shared_state_ptr<T> state) : state(std::move(state)) {}
 
     future() {}
     future(T value) : state(new shared_state{std::move(value)}) {}
@@ -137,7 +131,6 @@ public:
         if (!ready())
             gpd::wait(strategy, *this);
     }
-
 
     template<class F>
     auto then(F&&f) {
@@ -163,7 +156,7 @@ public:
     
     future get_future() {
         assert(state);
-        return future{ state } ;
+        return future{ shared_state_ptr<T>{state}  } ;
     }
     
     void set_value(T x) {
@@ -232,7 +225,7 @@ auto then(Waitable w, F&& f)
     auto e = get_event(p->w);
     assert(e);
     e->wait(p.get());
-    return future<T>(p.release());
+    return future<T>(shared_state_ptr<T>{p.release()});
 }
 
 
