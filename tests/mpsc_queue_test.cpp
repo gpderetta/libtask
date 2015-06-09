@@ -39,8 +39,8 @@ int main() {
                         if (p->count == count*10  )
                             break;
                     }
-                    std::unique_lock<std::mutex> l(mux);
-                    std::cerr << id << "->" << ((id + 1)%count) << ':' << i <<'\n';
+                    //std::unique_lock<std::mutex> l(mux);
+                    //std::cerr << id << "->" << ((id + 1)%count) << ':' << i <<'\n';
                 }));
     for(auto& t: threads)
         t.join();
