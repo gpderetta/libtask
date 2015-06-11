@@ -6,18 +6,13 @@
 
 namespace gpd {
 
-template<class T>
-struct static_ { static T value; };
-
-template<class T>
-T static_<T>::value ={};
 struct empty_t {
 
     constexpr bool operator==(empty_t) { return true; }
     constexpr bool operator<(empty_t) { return false; }
 };
 
-namespace { constexpr const empty_t& empty = static_<empty_t>::value; }
+constexpr empty_t empty = {};
 template<class>
 struct is_variant : std::false_type {};
 template<class...T>
