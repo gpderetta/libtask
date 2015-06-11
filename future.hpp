@@ -80,6 +80,12 @@ public:
         return std::move(storage_.get(ptr<std::exception_ptr>{}));
     }
 
+    type get_value() {
+        assert(ready());
+        return std::move(storage_.get(ptr<type>{}));
+    }
+
+
     void set_value(type&& x) {
         storage_ = std::move(x);
     }
@@ -133,7 +139,11 @@ public:
 
     bool valid() const { return !!state; }
     bool ready() const { return valid() && state->ready(); }
-
+    bool has_exception() const { return valid() && state->has_exception(); }
+    bool has_value() const { return valid() && state->has_value(); }
+    type get_value() const { assert(ready()); return state->get_value(); }
+    std::exception_ptr get_exception() const { assert(ready()); return state->get_exception(); }
+    
     template<class WaitStrategy=default_waiter_t&>
     void wait(WaitStrategy&& strategy=default_waiter) {
         assert(valid());
