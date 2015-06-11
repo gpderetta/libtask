@@ -51,8 +51,9 @@ class shared_state : public event
 {
     future_storage<T> storage_;
 public:
+    using type = T;
     shared_state() {}
-    shared_state(T value) 
+    shared_state(type value) 
         : event(true), storage_(std::move(value)) { }
     shared_state(std::exception_ptr except) 
         : event(true), storage_(std::move(except)) { }
@@ -62,15 +63,15 @@ public:
     
     using event::ready;
     bool has_exception() const { return ready() && storage_.is(ptr<std::exception_ptr>{}); }
-    bool has_value() const { return storage_.is(ptr<T>{}); }
+    bool has_value() const { return storage_.is(ptr<type>{}); }
 
     auto storage() && { return std::move(storage_); }
     
-    T& get() {
+    type& get() {
         assert(ready());
         if (has_exception())
             std::rethrow_exception(get_exception());
-        return storage_.get(ptr<T>{});
+        return storage_.get(ptr<type>{});
     }
 
     std::exception_ptr& get_exception() {
@@ -78,7 +79,7 @@ public:
         return storage_.get(ptr<std::exception_ptr>{});
     }
 
-    void set_value(T&& x) {
+    void set_value(type&& x) {
         storage_ = std::move(x);
     }
 
@@ -86,8 +87,8 @@ public:
         storage_ = std::move(e);
     }
 
-    void set_value(const T&& x) {
-        storage = x;
+    void set_value(const type&& x) {
+        storage_ = x;
     }
 
     void set_exception(const std::exception_ptr& e) {
@@ -102,6 +103,7 @@ struct shared_state_deleter {
         e->wait(&delete_waiter);
     }
 };
+
 template<class T>
 using shared_state_ptr = std::unique_ptr<shared_state<T>, shared_state_deleter>;
 
@@ -111,17 +113,17 @@ class future {
     shared_state_ptr<T> state;
 
 public:
-
-    explicit future(shared_state_ptr<T> state) : state(std::move(state)) {}
+    using type = T;
+    explicit future(shared_state_ptr<type> state) : state(std::move(state)) {}
 
     future() {}
-    future(T value) : state(new shared_state{std::move(value)}) {}
+    future(type value) : state(new shared_state{std::move(value)}) {}
 
     template<class WaitStrategy=default_waiter_t&>
-    T get(WaitStrategy&& strategy = default_waiter) {
+    type get(WaitStrategy&& strategy = default_waiter) {
         wait(strategy);
         auto tstate = std::move(state);
-        return static_cast<T&&>(tstate->get());
+        return static_cast<type&&>(tstate->get());
     }
 
     bool valid() const { return !!state; }
@@ -141,7 +143,7 @@ public:
 
     friend event* get_event(future&x) { return x.state.get(); }
 
-    shared_future<T> share();
+    shared_future<type> share();
 };
 
 template<class T>
