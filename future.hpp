@@ -51,16 +51,17 @@ class shared_state : public event
 {
     future_storage<T> storage_;
 public:
+    shared_state(shared_state&&) = delete;
+    shared_state(const shared_state&) = delete;
+    void operator=(shared_state&&) = delete;
+    void operator=(const shared_state&) = delete;
     using type = T;
     shared_state() {}
     shared_state(type value) 
         : event(true), storage_(std::move(value)) { }
     shared_state(std::exception_ptr except) 
         : event(true), storage_(std::move(except)) { }
-    
-    shared_state(shared_state&&) = default;
-    shared_state& operator=(shared_state&&) = default;
-    
+        
     using event::ready;
     bool has_exception() const { return ready() && storage_.is(ptr<std::exception_ptr>{}); }
     bool has_value() const { return storage_.is(ptr<type>{}); }
