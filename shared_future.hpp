@@ -9,7 +9,7 @@ struct shared_state_multiplexer : waiter {
     shared_state_ptr<T> future;
     std::mutex mux;
     std::deque<promise<bool> > listeners;
-    variant<T, std::exception_ptr> value;
+    future_storage<T> value;
     
     shared_state_multiplexer(shared_state_ptr<T> f) : future(std::move(f)) {
         assert(!!future);

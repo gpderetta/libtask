@@ -45,9 +45,11 @@ template<class T>
 using ptr = T*;
 
 template<class T>
+using future_storage = variant<T, std::exception_ptr>;
+template<class T>
 class shared_state : public event
 {
-    variant<T, std::exception_ptr > storage_;
+    future_storage<T> storage_;
 public:
     shared_state() {}
     shared_state(T value) 
