@@ -75,9 +75,9 @@ public:
         return storage_.get(ptr<type>{});
     }
 
-    std::exception_ptr& get_exception() {
+    std::exception_ptr get_exception() {
         assert(ready());
-        return storage_.get(ptr<std::exception_ptr>{});
+        return std::move(storage_.get(ptr<std::exception_ptr>{}));
     }
 
     void set_value(type&& x) {
