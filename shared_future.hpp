@@ -20,7 +20,7 @@ struct shared_state_multiplexer : waiter {
     }   
 
     void do_set() {
-        value = std::move(*future).storage();
+        value = std::move(*future).get_storage();
     }
     
     auto lock() { return std::unique_lock<std::mutex> (mux);}
