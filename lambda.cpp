@@ -40,7 +40,9 @@ template<class T>
 
 template<int> struct integer {};
 template<int i>
-void foo(integer<i>){}
+constexpr void foo(integer<i>){}
+
+constexpr int bar(int k, int j) { return k + j;}
 int main()
 {
     {
@@ -51,9 +53,13 @@ int main()
     {
         constexpr int i  = $(x)(x + 1)(42);
         static_assert(i == 43, "");
-        integer<i> x;
+        constexpr integer<i> x;
         foo(x);
-
+    }
+    {
+        constexpr auto f = $(x, y)(bar(y, x) + bar(2*x, 2*x));
+        constexpr int i = f(1,2);
+        static_assert(i == 7, "");
     }
     {
         constexpr int j  = $(x, y)(x + y)(42,43) + $(x, y, z)(x + y * z)(42,43,22);
