@@ -11,7 +11,7 @@ template<class I>
 struct wrap {
   constexpr wrap() = default;
   template<class... Args>
-    constexpr auto operator()(Args&&... args) {
+    constexpr auto operator()(Args&&... args) const  {
     using F = std::result_of_t<I(Args&&...)>;
     return F()(std::forward<Args>(args)...);
   }
@@ -40,17 +40,26 @@ template<class T>
 
 template<int> struct integer {};
 template<int i>
-void foo(integer<i>);
+void foo(integer<i>){}
 int main()
 {
-  constexpr auto f = $(x)(x + 10);
-     
-  constexpr int i  = $(x)(x + 1)(42);
-  constexpr int j  = $(x, y)(x + y)(42,43);
-  
-  constexpr int k  = $(x, y, z)(x + y * z)(42,43,22);
-  integer<i> x;
-  foo(x);
+    {
+        constexpr auto f = $(x)(x + 10);
+        constexpr int k = f(11);
+        static_assert(k == 21, "");
+    }
+    {
+        constexpr int i  = $(x)(x + 1)(42);
+        static_assert(i == 43, "");
+        integer<i> x;
+        foo(x);
+
+    }
+    {
+        constexpr int j  = $(x, y)(x + y)(42,43) + $(x, y, z)(x + y * z)(42,43,22);
+        static_assert(j == 1073, "");
+
+    }
 }
 
 
