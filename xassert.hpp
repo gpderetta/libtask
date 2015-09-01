@@ -1,7 +1,7 @@
 #include <cassert>
 #ifdef NDEBUG
-#define XASSERT(x)                             \
-    if(!x) __builtin_unreachable();            \
+#define XASSERT(x)                                      \
+    do { if(!(x)) __builtin_unreachable(); } while(0)   \
 /**/
 #else
 #define XASSERT(x) assert(x)
