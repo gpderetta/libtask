@@ -1,6 +1,7 @@
 #ifndef GPD_MATCH_HPP
 #define GPD_MATCH_HPP
 namespace gpd {
+#ifdef __GNUC__
 namespace details {
 
 
@@ -43,5 +44,12 @@ match(F... f) {
     return {f...};
 
 }
+#else
+template<class... F>
+auto match(F... f) {
+    struct _ : F... { _(F... f) : F(f)...{}} result(f...);
+    return result;
+}
+#endif
 }
 #endif
