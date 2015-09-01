@@ -159,7 +159,7 @@ int main() {
         $transform(in.begin(), 
                    in.end(), 
                    std::back_inserter(out),
-                   $second);
+                   $(second));
         assert(expected == out);
     }
 
