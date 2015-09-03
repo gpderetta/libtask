@@ -100,7 +100,7 @@ R evaluate(Variant&& v, F&& f) {
 }
 
 template<class R, class... T, class F>
-R do_visit(int discriminant, variant<T...>&v , F&&f) {
+R do_visit(int discriminant, variant<T...>&v , F&&f, long) {
     using J = R(variant<T...>&, F&&);
     static constexpr J * table[] = {
         &evaluate<variant<T...>&, R, empty_t, F>,
@@ -110,7 +110,7 @@ R do_visit(int discriminant, variant<T...>&v , F&&f) {
 }
 
 template<class R, class... T, class F>
-R do_visit(int discriminant, const variant<T...>&v , F&&f) {
+R do_visit(int discriminant, const variant<T...>&v , F&&f, long) {
     using J = R(const variant<T...>&, F&&);
     static constexpr J * table[] = {
         &evaluate<const variant<T...>&, R, empty_t, F>,
@@ -119,7 +119,30 @@ R do_visit(int discriminant, const variant<T...>&v , F&&f) {
     return table[discriminant](v, f);
 }
 
+template<class R, class T1, class T2, class F>
+R do_visit(int discriminant, variant<T1, T2>&v , F&&f, int) {
+    switch(discriminant) {
+    case 0: return evaluate<variant<T1, T2>&, R, empty_t>(v, f);
+    case 1: return evaluate<variant<T1, T2>&, R, T1>(v, f);
+    case 2: return evaluate<variant<T1, T2>&, R, T2>(v, f);
+    };
+    __builtin_unreachable();
 }
 
+template<class R, class T1, class T2, class F>
+R do_visit(int discriminant, const variant<T1, T2>&v , F&&f, int) {
+    switch(discriminant) {
+    case 0: return evaluate<const variant<T1, T2>&, R, empty_t>(v, f);
+    case 1: return evaluate<const variant<T1, T2>&, R, T1>(v, f);
+    case 2: return evaluate<const variant<T1, T2>&, R, T2>(v, f);
+    };
+    __builtin_unreachable();
+}
+
+template<class R, class Variant, class F>
+R do_visit(int discriminant, Variant&&v , F&&f) {
+    return do_visit<R>(discriminant, std::forward<Variant>(v), std::forward<F>(f), 0);
+}
+}
 }
 #endif
