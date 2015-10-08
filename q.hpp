@@ -32,7 +32,9 @@ struct constexpr_str
     }
 };
 
-template<class T> struct init : T {  init() : T(*this){}; };
+struct probe { template<class T> constexpr operator T() const { return {}; } };
+
+template<class T> struct init : T {  constexpr init() : T(*this){}; };
 template<class Fun, class MemFn, class Member, class Forward, class Name>
 struct quoted : Fun, MemFn, Member {
     using Fun::operator();
@@ -92,18 +94,21 @@ std::ostream& operator<<(std::ostream& s, named_tuple<M...> const& t)
     return s << "}";
 }
 
+template<class... T, class F>
+constexpr auto callable(F f) -> decltype(f(std::declval<T>()...), true) {
+    (void) f; return true;
+}
+
+template<class...>
+constexpr auto callable(...) -> bool { return false; }
+
+
 template<class... T>
 named_tuple<T...> tup(T... t)
 {
     return {std::forward<T>(t)...};
 };
 
-
-/**
- * Returns a polymorphic callable created by the composition of all
- * callables in argument pack 'f'
- *
- **/
 template<class... F>
 ::gpd::quoted< ::gpd::init<F>...>
 mkquoted(F... ) {
@@ -114,6 +119,7 @@ mkquoted(F... ) {
 
 #define $forward($s) std::forward<decltype($s)>($s)
 #define $($s)                                                           \
+    (false?                                                             \
     ::gpd::mkquoted(                                                    \
         [](auto&&... args)                                              \
         noexcept(noexcept($s($forward(args)...)))                       \
@@ -160,7 +166,7 @@ mkquoted(F... ) {
             };                                                          \
             return R{};                                                 \
         }                                                               \
-        )                                                               \
+        ): ::gpd::probe{})                                              \
           /**/
 
 

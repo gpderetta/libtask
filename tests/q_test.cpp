@@ -170,4 +170,11 @@ int main() {
         auto x = tup($(foo) = $(foo));
         x.foo(j);
     }
+    {
+        static_assert(gpd::callable<Y>($(foo)), "failed");
+        static_assert(gpd::callable<Y, int>($(foo)), "failed");
+        static_assert(!gpd::callable<Y, int, int>($(foo)), "failed");
+        static_assert(!gpd::callable<Y, int, int>($(foo)), "failed");
+
+    }
 }
