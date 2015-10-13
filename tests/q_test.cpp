@@ -33,6 +33,17 @@ void foo(Z) {}
 void foo(Y, int){}
 void foo(X, int){}
 
+struct K {};
+
+
+
+template<class T>
+auto does_not_understand(gpd::symbol<T>, K){ return 42; }
+
+template<int>
+struct placeholder { };
+constexpr placeholder<1> $1;
+
 
 int main() {
 
@@ -74,7 +85,11 @@ int main() {
         nXX::XX xx;
         $(foo)(xx);
     }
-
+    {
+        K x;
+        auto y = $(foo)(x);
+        assert(y == 42);
+    }
     {
         std::vector<X> in { {0}, {1}, {2}, {3} };
         std::vector<int> out;

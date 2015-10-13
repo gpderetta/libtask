@@ -77,10 +77,11 @@ template<class T> T xgen() { return *(T*)0; }
 
 template<class T> struct init : T {  constexpr init() : T(*this){}; };
 template<class M>
-struct symbol : M::fun, M::memfn, M::member {
+struct symbol : M::fun, M::memfn, M::member, M::dnu {
     using M::fun::operator();
     using M::memfn::operator();
     using M::member::operator();
+    using M::dnu::operator();
 
     template< class T>
     using field = std::result_of_t<typename M::field(gen<T>)>;
@@ -170,6 +171,10 @@ named_tuple<T...> tup(T... t)
             noexcept(noexcept($forward(h).$s))                      \
             -> decltype(($forward(h).$s))                           \
             { return ($forward(h).$s); };                           \
+        auto dnu_ = [](auto&& h)                                    \
+            noexcept(noexcept(does_not_understand(self_t{}, $forward(h)))) \
+            -> decltype(does_not_understand(self_t{}, $forward(h)))     \
+            { return does_not_understand(self_t{}, $forward(h)); };     \
                                                                     \
         auto field_ = [](auto f) noexcept {                         \
             struct field {                                          \
@@ -184,6 +189,7 @@ named_tuple<T...> tup(T... t)
             using fun = ::gpd::init<decltype(fun_)>;                \
             using memfn = ::gpd::init<decltype(memfn_)>;            \
             using member = ::gpd::init<decltype(member_)>;          \
+            using dnu = ::gpd::init<decltype(dnu_)>;          \
             using field = ::gpd::init<decltype(field_)>;            \
         } ; return gpd::symbol<meta>{}; }():                        \
      ::gpd::probe{})                                                \
