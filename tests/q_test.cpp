@@ -127,16 +127,16 @@ int main() {
         rx.foo = 12;
         assert(x == 12);
 
-        auto cx = capture(rx);
+        auto cx = gpd::capture(rx);
         cx.foo = 42;
         assert(cx.foo == 42 && x == 12);
 
-        auto cy = capture($(bar) = x);
+        auto cy = gpd::capture($(bar) = x);
         cy.bar = 69;
         assert(cy.bar == 69 && x == 12);
 
         auto xbar = gpd::meta<std::decay_t<decltype(cy) > >;
-        auto cz = capture(xbar = 10);
+        auto cz = gpd::capture(xbar = 10);
         assert(cz.bar == 10);
 
         assert($(bar)(cz) == 10);
