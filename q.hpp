@@ -71,13 +71,14 @@ enum class operators {
     lt, gt, lte, gte, eq, assign, 
 };
 
-template<operators, class...> struct operator_expression;
+template<operators, class...> struct expression;
 
 template<class Lhs, class Rhs>
-struct operator_expression<operators::assign, Lhs, Rhs>
+struct expression<operators::assign, Lhs, Rhs>
 {
     Lhs lhs; Rhs rhs;
 };
+
 
 template<class... E>
 struct symbol_expression
@@ -93,7 +94,10 @@ struct terminal
 template<class M> struct symbol;
 
 template<class M, class T>
-auto as_field(operator_expression<operators::assign, terminal<symbol<M> >, terminal<T> > expr) ->
+using param = expression<operators::assign, terminal<symbol<M> >, terminal<T> >;
+
+template<class M, class T>
+auto as_field(param<M, T> expr) ->
     rebind_field_t<std::decay_t<T>, symbol<M> >
 {
     return { std::forward<T>(expr.rhs.value) };
@@ -103,7 +107,7 @@ template<class T>
 using as_field_t = decltype(gpd::as_field(std::declval<T>()));
 
 template<class M, class T>
-auto as_ref_field(operator_expression<operators::assign, terminal<symbol<M> >, terminal<T> > expr) ->
+auto as_ref_field(param<M,T> expr) ->
     rebind_field_t<T, symbol<M> >
 {
     return { std::forward<T>(expr.rhs.value) };
@@ -135,7 +139,8 @@ struct symbol : M::fun, M::memfn, M::member, M::dnu {
     using field = std::result_of_t<typename M::field(gen<T>)>;
     
     template<class T>
-    auto operator=(T&& x) const -> operator_expression<operators::assign, terminal<symbol<M> >, terminal<T> >  { return {{*this}, {std::forward<T>(x)} };  }
+    auto operator=(T&& x) const -> param<M, T>
+    { return {{*this}, {std::forward<T>(x)} };  }
 
     template<class T>
     friend auto operator<(T&& x, symbol) {
@@ -187,11 +192,7 @@ struct named_tuple : F ... {
     { }
     
     template<class... M, class... T>
-        named_tuple(operator_expression<
-                    operators::assign,
-                    terminal<symbol<M> >,
-                    terminal<T>
-                    >...)
+        named_tuple(param<M, T>...)
       ;
 
     template<class... F2>
@@ -265,40 +266,22 @@ template<class X>
 binder<X> from(X&& x) { return {std::forward<X>(x)}; }
 
 template<class... M, class... T>
-named_tuple<as_field_t<
-        operator_expression<
-            operators::assign,
-            terminal<symbol<M> >,
-            terminal<T>
-            >
-        >...
-    >
-tup(operator_expression<operators::assign, terminal<symbol<M> >, terminal<T> >... expr)
+named_tuple<as_field_t<param<M, T> >... >
+tup(param<M, T>... expr)
 {
     return {elementwise, std::forward<T>(expr.rhs.value)...};
 };
 
 template<class... M, class... T>
-named_tuple<as_ref_field_t<
-        operator_expression<
-            operators::assign,
-            terminal<symbol<M> >,
-            terminal<T>
-            >
-        >...
-    >
-ref(operator_expression<operators::assign, terminal<symbol<M> >, terminal<T> >... expr)
+named_tuple<as_ref_field_t<param<M,T> >...>
+ref(param<M, T>... expr)
 {
     return {elementwise, expr.rhs.value...};
 };
 
 template<class... F>
 template<class... M, class... T>
-named_tuple<F...>::named_tuple(operator_expression<
-                               operators::assign,
-                               terminal<symbol<M> >,
-                               terminal<T>
-                               >... args)
+named_tuple<F...>::named_tuple(param<M, T>... args)
     : named_tuple(from(ref(args...)))
 {
 }
