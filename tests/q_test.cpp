@@ -139,19 +139,19 @@ int main() {
     {
         int x = 10;
         auto rx = $(foo) = x;
-        rx.foo = 12;
+        rx.rhs.value = 12;
         assert(x == 12);
 
-        auto cx = gpd::capture(rx);
+        auto cx = gpd::as_field(rx);
         cx.foo = 42;
         assert(cx.foo == 42 && x == 12);
 
-        auto cy = gpd::capture($(bar) = x);
+        auto cy = gpd::as_field($(bar) = x);
         cy.bar = 69;
         assert(cy.bar == 69 && x == 12);
 
         auto xbar = gpd::meta<std::decay_t<decltype(cy) > >;
-        auto cz = gpd::capture(xbar = 10);
+        auto cz = gpd::as_field(xbar = 10);
         assert(cz.bar == 10);
 
         assert($(bar)(cz) == 10);
@@ -180,6 +180,58 @@ int main() {
         s << tuple << std::endl;
         assert(s.str() == "{foo: 10, bar: 20, baz: hello}\n");
     }
+    {
+        int x = 10;
+        int y = 20;
+        auto $foo = $(foo);
+        auto $bar = $(bar);
+        auto tuple = ref($foo = x, $bar = y);
+        assert(tuple.foo == 10);
+        assert(tuple.bar == 20);
+        tuple.foo = 22;
+        assert(x == 22);
+    }
+    {
+        auto $foo = $(foo);
+        auto $bar = $(bar);
+        using tuple_t = decltype(tup($foo = 10, $bar = 20));
+        tuple_t tuple($foo = 42, $bar = 54);
+
+        assert(tuple.foo == 42);
+        assert(tuple.bar == 54);
+
+        tuple_t tuplep ($foo = 69);
+        assert(tuplep.foo == 69);
+        assert(tuplep.bar == 0);
+        
+        tuple = ref($(foo) = 10, $(bar) = 20);
+        assert(tuple.foo == 10);
+        assert(tuple.bar == 20);
+
+        struct { int foo = 1000, bar = 200; } x;
+
+
+        tuple_t tuple2 (gpd::from(x));
+        assert(tuple2.foo == 1000);
+        assert(tuple2.bar == 200);
+
+        tuple = x;
+        assert(tuple.foo == 1000);
+        assert(tuple.bar == 200);
+
+        gpd::to(x) = gpd::tup($(bar) = 20);
+        assert(x.bar == 20);
+
+        struct { int foo, bar; } y (tuple);
+        assert(y.foo == 1000);
+        assert(y.bar == 200);
+
+        int foo, bar;
+        gpd::ref($foo = foo, $bar = bar) = tuple;
+        assert(foo == 1000);
+        assert(bar == 200);
+    }
+
     {
         J j;
         auto x = tup($(foo) = $(foo));
