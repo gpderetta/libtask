@@ -1,10 +1,12 @@
-FEATURE_FLAGS= --std=c++14
-#DEVEL_FLAGS= -W -Wall -O0  -fopenmp -g
-DEVEL_FLAGS= -W -Wall -g  -fopenmp -g -msse4.2 -march=native
+FEATURE_FLAGS= --std=c++14 -Wno-unused-local-typedefs
+DEVEL_FLAGS= -W -Wall -O3  -fopenmp -g -march=native -mno-red-zone -DNDEBUG
+#DEVEL_FLAGS= -W -Wall -g  
 
 SUPPRESS=1
 INCLUDE=-I.
-CXX=g++-4.9
+#CXX=clang++-3.7
+CXX=g++-5
+#CXX=g++-4.9
 CPPFLAGS=  $(INCLUDE) 
 CXXFLAGS ?= $(FEATURE_FLAGS) $(DEVEL_FLAGS)
 
@@ -26,6 +28,7 @@ TESTS=match_test\
 	variant_test\
 	dynamic_test\
 	any_future_test\
+	future_algo_test\
 	q_test\
 
 pipe_test_LIBS=boost_regex
@@ -45,6 +48,9 @@ future_test_LIBS=\
 	task\
 
 any_future_test_LIBS=\
+	task\
+
+future_algo_test_LIBS=\
 	task\
 
 include Makefile.common

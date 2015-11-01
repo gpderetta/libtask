@@ -46,6 +46,18 @@ using ptr = T*;
 
 template<class T>
 using future_storage = variant<T, std::exception_ptr>;
+
+
+template<class T, class F, class... Args>
+future_storage<T> then(F&& f, Args&&... args) {
+    try {
+        return future_storage<T> {(std::forward<F>(f)(std::forward<Args>(args)...))};
+    } catch(...) {
+        return future_storage<T> { std::current_exception() };
+    }
+}
+
+
 template<class T>
 class shared_state : public event
 {
@@ -61,16 +73,18 @@ public:
         : event(true), storage_(std::move(value)) { }
     shared_state(std::exception_ptr except) 
         : event(true), storage_(std::move(except)) { }
+    shared_state(future_storage<T> storage) 
+        : event(true), storage_(storage) { }
         
     using event::ready;
     bool has_exception() const { return ready() && storage_.is(ptr<std::exception_ptr>{}); }
-    bool has_value() const { return storage_.is(ptr<type>{}); }
+    bool has_value() const { return ready() && storage_.is(ptr<type>{}); }
 
     auto get_storage() && { return std::move(storage_); }
 
     type& get() {
         assert(ready());
-        if (has_exception())
+        if (storage_.is(ptr<std::exception_ptr>{}))
             std::rethrow_exception(get_exception());
         return storage_.get(ptr<type>{});
     }
@@ -109,14 +123,18 @@ public:
     virtual ~shared_state() override { }
 };
 
-struct shared_state_deleter {
+struct event_deleter {
     void operator()(event* e) {
-        e->wait(&delete_waiter);
+        assert(e);
+        if (e->ready())
+            delete e;
+        else
+            e->wait(&delete_waiter);
     }
 };
 
 template<class T>
-using shared_state_ptr = std::unique_ptr<shared_state<T>, shared_state_deleter>;
+using shared_state_ptr = std::unique_ptr<shared_state<T>, event_deleter>;
 
 template<class T>
 class future {
@@ -129,6 +147,7 @@ public:
 
     future() {}
     future(type value) : state(new shared_state{std::move(value)}) {}
+    future(future_storage<T> storage) : state(new shared_state{std::move(storage)}) {}
 
     template<class WaitStrategy=default_waiter_t&>
     type get(WaitStrategy&& strategy = default_waiter) {
@@ -231,11 +250,13 @@ auto then(Waitable w, F&& f)
             : w(std::move(w)), f(std::forward<F>(f)){}
         Waitable w;
         std::decay_t<F> f;
-        void signal(event_ptr p) override {
+        void signal(event_ptr p) override final {
             p.release();
             eval_into(*this, f, std::move(w));
             shared_state<T>::signal();
         }
+
+        ~state() override final {}
     };
 
     std::unique_ptr<state> p {

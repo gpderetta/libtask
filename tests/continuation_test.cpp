@@ -14,10 +14,17 @@ struct polymorphic {
     C operator() (C c) const { return c; }
 };
 
+static __inline__ unsigned long long rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
 gpd::continuation<void()> monomorphic(gpd::continuation<void()> c) { return c; }
 
 int main() {
     using namespace gpd;
+    #if 0
     {
         auto c = callcc([](continuation<void(int)> c) { 
                 c(42);
@@ -553,5 +560,59 @@ int main() {
         std::copy(x.begin(),x.end(),
                   begin(pipeline));
     }
+#endif
+    {
+
+        auto c = callcc([](continuation<void()> c) {
+                asm ("# in lambda");
+                while(true) {
+                    asm ("# in lambda loop begin");
+                    c();
+                    asm ("# in lambda loop end");
+                }
+                return c;
+                });
+
+        int count = 1000000;
+        
+        auto i = rdtsc();
+        for(int i = 0; i < count; ++i)
+            c();
+        auto e = rdtsc();
+        std::cerr<< i << ' ' << e << ' ' << (e-i) << ' ' << double(e-i) / count / 2 <<'\n' ;
+    }
+}
+
+volatile void * g_parm;
+volatile void * g_rsp;
+volatile void * g_ip;
+gpd::switch_pair foo(gpd::parm_t parm /*rsi*/, gpd::cont cont /*rdx->rsp, rcs->ip*/)
+{
+    g_parm = parm;
+    g_rsp = cont.rsp;
+    g_ip  = cont.ip;
+    return {};
+}
+
+void foo2(gpd::parm_t parm /*rsi*/, gpd::cont cont /*rdx->rsp, rcs->ip*/)
+{
+    g_parm = parm;
+    g_rsp = cont.rsp;
+    g_ip  = cont.ip;
+}
+
+gpd::switch_pair bar(gpd::parm_t parm /*rsi*/, void* rsp, void* ip /*rdx->rsp, rcs->ip*/)
+{
+    g_parm = parm;
+    g_rsp = rsp;
+    g_ip  = ip;
+    return {};
+}
+
+void bar2(gpd::parm_t parm /*rsi*/, void* rsp, void* ip /*rdx->rsp, rcs->ip*/)
+{
+    g_parm = parm;
+    g_rsp = rsp;
+    g_ip  = ip;
 
 }

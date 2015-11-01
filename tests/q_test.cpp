@@ -244,4 +244,13 @@ int main() {
         static_assert(!gpd::callable<Y, int, int>($(foo)), "failed");
 
     }
+    {
+        struct X { int foo; int baz; };
+        std::vector<X> v = { {0,1}, {1,3}, {2,4} };;
+        // for (auto x : from(v)
+        //          .map($(foo), $(bar) = $(baz) * 2)
+        //          .where($(bar) > $(foo)))
+        // {
+        // }
+    }
 }

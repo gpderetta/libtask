@@ -9,7 +9,8 @@ namespace gpd {
 typedef void* parm_t;
 
 struct cont { 
-    void * rsp; 
+    void * rsp;
+    void * ip;
     explicit operator bool() const { return rsp;}
 };
 
@@ -37,39 +38,40 @@ typedef switch_pair trampoline_t(parm_t parm, cont calling_continuation);
 
 
 inline switch_pair
-stack_switch_impl(cont sp, parm_t parm) {
+stack_switch_impl(cont sp /*rdi + rsi*/, parm_t parm /*rdx*/) {
     asm volatile (
-        "pushq $1f          \n\t"
-        "xchg  %%rbx, %%rsp \n\t"
-        "popq  %%rsi        \n\t"
-        "jmp  *%%rsi        \n\t"
+        "movq  %%rdx,  %%rax \n\t"
+        "movq  $1f,   %%rdx \n\t"
+        "xchg  %%rcx, %%rsp \n\t"
+        "jmp   *%%rax        \n\t"
         "1:                 \n\t"
-        :  "+b"(sp.rsp), "+d"(parm) 
+        : "+b"(parm), "+c"(sp.rsp), "+d"(sp.ip) 
         :  
-        : "rsi", "rdi", "rcx", "rax", "rbp",
+        : "rax", "rdi", "rsi", "rbp",
           GPD_CLOBBER_LIST
         );
     return switch_pair{sp, parm};
 }
 
-typedef switch_pair trampoline_t(parm_t /* rdi */ parm, cont calling_continuation /*rsi*/); 
+typedef switch_pair trampoline_t(parm_t /* rdi */ parm, cont calling_continuation /*rsi + rdx*/); 
    
 inline
 switch_pair 
-execute_into(parm_t parm, cont sp, trampoline_t * ex) {
-    switch_pair ret;
-    asm volatile ( 
-        "pushq $1f          \n\t"
+execute_into(parm_t parm, cont sp /* rsi + rdx */, trampoline_t * ex /*rcx*/) {
+    asm volatile (
+        "movq  $1f,   %%rdx \n\t"
         "xchg  %%rsi, %%rsp \n\t"
-        "jmp  *%%rcx        \n\t"
+        "jmp   *%%rax        \n\t"
         "1:                \n\t"
-        : "=d"(ret.parm), "=b"(ret.sp.rsp)
-        : "D"(parm), "S"(sp.rsp), "c"(ex) 
+        : "=b"(parm), "=c"(sp.rsp), "+d"(sp.ip)
+        : "D"(0), "S"(parm), "d"(sp.rsp), ""(ex) 
         : "rbp",
           GPD_CLOBBER_LIST
         );
-    return ret;
+    return switch_pair{sp, parm};
 }
+
+
 
 }
 #endif

@@ -14,18 +14,18 @@ struct waiter {
 };
 
 struct delete_waiter_t : waiter {
-    virtual void signal(event_ptr p) override { (void)p; };
-    virtual ~delete_waiter_t() override {}
+    virtual void signal(event_ptr p) override final { (void)p; };
+    virtual ~delete_waiter_t() override final {}
 };
 
 struct noop_waiter_t : waiter {
-    virtual void signal(event_ptr p) override { p.release(); };
-    virtual ~noop_waiter_t() override {}
+    virtual void signal(event_ptr p) override final { p.release(); };
+    virtual ~noop_waiter_t() override final {}
 };
 
 extern delete_waiter_t delete_waiter;
 extern noop_waiter_t noop_waiter;
-
+extern event always_ready;
 
 #define GPD_EVENT_IMPL_WAITFREE 1
 #define GPD_EVENT_IMPL_DEKKER_LIKE 2
@@ -52,9 +52,9 @@ struct event
 {
     event(event&) = delete;
     void operator=(event&&) = delete;
-    event(bool signaled = false) : state(signaled ? event::signaled : empty ) {}
+    event(bool signaled = false) : state(signaled ? event::signaled : empty ) {} 
 
-    bool ready() const { return get_waiter() == signaled; }
+    bool ready() const { return __builtin_expect(get_waiter() == signaled, true); }
     
     // Put the event in the signaled state. If the event was in the
     // waited state invoke the callback (and leave the event in the
@@ -83,7 +83,7 @@ struct event
     bool try_wait(waiter * w) {
         assert(w);
         auto old_w = get_waiter();
-        return (old_w != signaled && state.compare_exchange_strong(old_w, w));
+        return (__builtin_expect(old_w != signaled, false) && state.compare_exchange_strong(old_w, w));
     }
       
     // If the event is in the waited or empty state, put it into the

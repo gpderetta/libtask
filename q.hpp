@@ -36,7 +36,7 @@ struct constexpr_str
     }
 };
 
-struct eval { template<class... T> eval(T&&...){}};
+struct expand{ template<class... T> expand(T&&...){}};
 
 
 struct probe { template<class T> constexpr operator T() const { return {}; } };
@@ -67,11 +67,91 @@ constexpr auto get(T&& x) -> decltype((meta<std::decay_t<T> >(std::forward<T>(x)
 template<class T, class Meta>
 using rebind_field_t = typename Meta::template field<T>;
 
-enum class operators {
-    lt, gt, lte, gte, eq, assign, 
-};
+#define GPD_expand(e) e
+#define GPD_fn(decl, expr)                      \
+    constexpr decltype(auto)                    \
+        GPD_expand decl ->decltype(GPD_expand expr)                   \
+        noexcept(noexcept(GPD_expand expr))                \
+    { return GPD_expand expr; }                            \
+    /**/
 
-template<operators, class...> struct expression;
+
+#define GPD_make_binary_op(name, symbol)                                \
+    namespace operators {                                               \
+    struct name {                                                       \
+        template<class Lhs, class Rhs>                                  \
+        GPD_fn((operator()(Lhs&& lhs, Rhs&&rhs) const),                 \
+               (std::forward<Lhs>(lhs) symbol std::forward<Rhs>(rhs))); \
+    };                                                                  \
+    }                                                                   \
+    template<class Lhs, class Rhs>                                      \
+    struct expression<operators::name, Lhs, Rhs>                        \
+    {                                                                   \
+        Lhs lhs; Rhs rhs;                                               \
+        template<class V>                                               \
+        friend GPD_fn((visit(V v, expression e)), (v(operators::name{}, e.lhs, e.rhs))); \
+                                                                        \
+    }                                                                   \
+                                                                        \
+    /**/
+
+#define GPD_make_unary_op_prefix(name, op)                              \
+    namespace operators {                                               \
+    struct name {                                                       \
+        template<class T>                                               \
+        GPD_fn((operator()(T&& x) const), (op std::forward<T>(x)));     \
+    };                                                                  \
+    template<class T>                                                   \
+    struct expression<operators::name, T>                               \
+    {                                                                   \
+        T value;                                                        \
+        template<class V>                                               \
+            friend GPD_fn((visit(V v, expression e)), (v(operators::name{}, e.value))); \
+    }                                                                   \
+                                                                        \
+    /**/
+
+//+ - * / % ˆ & | ~ ! = < > += -= *= /= %= ˆ= &= |= << >> >>= <<= == != <= >= && || ++ -- , ->* -> ( ) [ ]
+GPD_make_binary_op(eq, ==);
+GPD_make_binary_op(neq, !=);
+GPD_make_binary_op(lt, <);
+GPD_make_binary_op(gt, >);
+GPD_make_binary_op(lte, <=);
+GPD_make_binary_op(gte, >=);
+
+GPD_make_binary_op(plus_eq, +=);
+GPD_make_binary_op(minus_eq, -=);
+GPD_make_binary_op(times_eq, *=);
+GPD_make_binary_op(div_eq, /=);
+GPD_make_binary_op(mod_eq, %=);
+GPD_make_binary_op(bitxor_eq, ^=);
+GPD_make_binary_op(bitand_eq, &=);
+GPD_make_binary_op(bitor_eq, |=);
+GPD_make_binary_op(lshift_eq, <<=);
+GPD_make_binary_op(rshift_eq, >>=);
+
+GPD_make_binary_op(plus, +);
+GPD_make_binary_op(minus, -);
+GPD_make_binary_op(times, *);
+GPD_make_binary_op(div, /);
+GPD_make_binary_op(mod, %);
+GPD_make_binary_op(bitxor, ^);
+GPD_make_binary_op(bitand_, &);
+GPD_make_binary_op(bitor_, |);
+GPD_make_binary_op(comp, ~);
+GPD_make_binary_op(lshift, <<);
+GPD_make_binary_op(rshift, >>);
+
+GPD_make_binary_op(and_, &&);
+GPD_make_binary_op(or_, ||);
+GPD_make_binary_op(_, &&);
+
+GPD_make_binary_op(assign, =);
+
+
+
+
+template<class Tag, class...> struct expression;
 
 template<class Lhs, class Rhs>
 struct expression<operators::assign, Lhs, Rhs>
@@ -79,16 +159,32 @@ struct expression<operators::assign, Lhs, Rhs>
     Lhs lhs; Rhs rhs;
 };
 
-
-template<class... E>
-struct symbol_expression
+template<class Lhs, class Rhs>
+struct expression<operators::lte, Lhs, Rhs>
 {
+    Lhs lhs; Rhs rhs;
 };
+
+template<class Lhs, class Rhs>
+struct expression<operators::gte, Lhs, Rhs>
+{
+    Lhs lhs; Rhs rhs;
+};
+
+template<class Lhs, class Rhs>
+struct expression<operators::gte, Lhs, Rhs>
+{
+    Lhs lhs; Rhs rhs;
+};
+
 
 template<class T>
 struct terminal
 {
     T value;
+    friend constexpr auto eval(terminal& x) { return x.value; }
+    friend constexpr auto eval(const terminal& x) { return x.value; }
+    friend constexpr auto eval(terminal&& x) { return x.value; }
 };
 
 template<class M> struct symbol;
@@ -230,7 +326,7 @@ struct named_tuple : F ... {
     template<class Rhs>
     named_tuple& operator=(Rhs&& rhs)
         {
-            eval{get(static_cast<F&>(*this)) =
+            expand{get(static_cast<F&>(*this)) =
                     std::move(meta<F>(std::forward<Rhs>(rhs)))...};
             return *this;
         }
@@ -248,13 +344,13 @@ struct binder {
     template<class... F>
     X operator=(named_tuple<F...> const& x)
     {
-        eval{meta<F>(value) = get(static_cast<F const&>(x))...};
+        expand{meta<F>(value) = get(static_cast<F const&>(x))...};
         return value;
     }
     template<class... F>
     X operator=(named_tuple<F...> && x)
     {
-        eval{meta<F>(value) = std::move(get(static_cast<F&&>(x)))...};
+        expand{meta<F>(value) = std::move(get(static_cast<F&&>(x)))...};
         return value;
     }
 

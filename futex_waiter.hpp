@@ -11,7 +11,7 @@ struct futex_waiter : waiter {
         signal_counter.store(0, std::memory_order_relaxed);
     }    
 
-    void signal(event_ptr p) override {
+    void signal(event_ptr p) override final {
         p.release();
         auto v = --signal_counter;
         if (v == 0)

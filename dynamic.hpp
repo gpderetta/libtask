@@ -22,11 +22,11 @@ struct dynamic_base : base {
     using interface = details::dynamic_ops<Interface>;
 
     interface &dynamic_get() {
-        return *reinterpret_cast<interface*>(dynamic_buffer);
+        return *static_cast<interface*>(buffer());
     }
     
     const interface& dynamic_get() const {
-        return *reinterpret_cast<const interface*>(dynamic_buffer);
+        return *static_cast<const interface*>(buffer());
     }
 
     void dynamic_reset() noexcept {
@@ -82,6 +82,9 @@ protected:
         std::uintptr_t vtable;
         alignas(std::max_align_t) char dynamic_buffer [buffer_size];        
     };
+
+    __attribute__((may_alias))    void * buffer() { return dynamic_buffer; }
+    __attribute__((may_alias))    const void * buffer() const { return dynamic_buffer; }
    
 };
 

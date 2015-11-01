@@ -1,6 +1,6 @@
 #ifndef GPD_SWITCH_PAIR_ACCESSOR_HPP
 #define GPD_SWITCH_PAIR_ACCESSOR_HPP
-#include "switch_base.hpp"
+#include "switch_base_alt.hpp"
 namespace gpd { namespace details {
 struct switch_pair_accessor { 
     template<class X>

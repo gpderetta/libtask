@@ -3,7 +3,7 @@
 #include "continuation_exception.hpp"
 #include "details/continuation_meta.hpp"
 #include "details/continuation_details.hpp"
-#include "details/switch_base.hpp"
+#include "details/switch_base_alt.hpp"
 #include "forwarding.hpp"
 #include "tuple.hpp"
 #include <exception>
@@ -130,7 +130,7 @@ struct continuation<Result(Args...)> {
      * any exception that has been explicitly sent to this control
      * flow.
      */
-    continuation& operator() (Args... args) {
+    inline __attribute__((always_inline))     continuation&  operator() (Args... args) {
         assert(!empty());
         switch_pair cpair = pilfer();
         std::tuple<Args...> p(std::forward<Args>(args)...);
@@ -182,8 +182,8 @@ struct continuation<Result(Args...)> {
      */
     continuation& yield() {
         assert(!empty());
-        switch_pair cpair = pilfer(); 
-        pair = stack_switch
+        switch_pair cpair = pilfer();   
+        pair = stack_switch_impl 
             (cpair.sp, 0); 
         return *this; 
     }
