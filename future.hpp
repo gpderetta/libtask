@@ -231,11 +231,13 @@ auto then(Waitable w, F&& f)
             : w(std::move(w)), f(std::forward<F>(f)){}
         Waitable w;
         std::decay_t<F> f;
-        void signal(event_ptr p) override {
+        void signal(event_ptr p) override final {
             p.release();
             eval_into(*this, f, std::move(w));
             shared_state<T>::signal();
         }
+
+        ~state() override final {}
     };
 
     std::unique_ptr<state> p {
