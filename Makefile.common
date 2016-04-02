@@ -1,6 +1,6 @@
 # this is a -*-makefile-*-
 
-.PHONY: clean all test run-test
+.PHONY: clean all tests run-tests
 all: $(PROGRAMS) $(TESTS) $(LIBRARIES) $(STATIC_LIBRARIES)
 
 OBJ_DIR=objs
@@ -188,7 +188,7 @@ clean:
 	rm -f $(LIBRARIES:%=$(LIB_DIR)/%.so)		
 
 .PHONY:
-test : setup-dirs $(TEST_BIN)
+tests : setup-dirs $(TEST_BIN)
 
 
 .PHONY:
@@ -204,7 +204,7 @@ run-%-test: %_test
 	fi ; \
 
 .PHONY:
-run-test: $(foreach test,$(TESTS),$(test:%_test=run-%-test))
+run-tests: $(foreach test,$(TESTS),$(test:%_test=run-%-test))
 
 ifneq "$(MAKECMDGOALS)" "clean"
   -include $(ALL_DEPS)
