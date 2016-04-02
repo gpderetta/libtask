@@ -40,7 +40,9 @@ struct variant : private details::assigner<0, empty_t, T...>
     }
 
     variant(const variant& rhs) : _discriminant(0) {
-        rhs.visit([&](auto& x){ this->unsafe_assign(x); } );
+        rhs.visit([&](auto& x){
+                this->unsafe_assign(x); } );
+        _discriminant = rhs._discriminant;
     }
 
     template<class T2>
@@ -114,6 +116,7 @@ struct variant : private details::assigner<0, empty_t, T...>
         else {
             reset();
             rhs.visit([&](auto& x){ this->unsafe_assign(std::move(x)); } );
+            _discriminant = rhs._discriminant;
         }
         return *this;
     }
@@ -197,7 +200,7 @@ private:
     template<class T2>
     void unsafe_assign(T2&& x) {
         assert(_discriminant == 0);
-        _discriminant = this->do_assign(_buffer, std::forward<T2>(x));
+        this->do_assign(_buffer, std::forward<T2>(x));
     }
 
     
