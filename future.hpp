@@ -64,13 +64,13 @@ public:
         
     using event::ready;
     bool has_exception() const { return ready() && storage_.is(ptr<std::exception_ptr>{}); }
-    bool has_value() const { return storage_.is(ptr<type>{}); }
+    bool has_value() const { return ready() && storage_.is(ptr<type>{}); }
 
     auto get_storage() && { return std::move(storage_); }
 
     type& get() {
         assert(ready());
-        if (has_exception())
+        if (storage_.is(ptr<std::exception_ptr>{}))
             std::rethrow_exception(get_exception());
         return storage_.get(ptr<type>{});
     }
