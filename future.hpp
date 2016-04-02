@@ -109,14 +109,18 @@ public:
     virtual ~shared_state() override { }
 };
 
-struct shared_state_deleter {
+struct event_deleter {
     void operator()(event* e) {
-        e->wait(&delete_waiter);
+        assert(e);
+        if (e->ready())
+            delete e;
+        else
+            e->wait(&delete_waiter);
     }
 };
 
 template<class T>
-using shared_state_ptr = std::unique_ptr<shared_state<T>, shared_state_deleter>;
+using shared_state_ptr = std::unique_ptr<shared_state<T>, event_deleter>;
 
 template<class T>
 class future {
