@@ -3,3 +3,7 @@
 *.o
 *.d
 *_test
+*.log
+*.s
+compile_commands.json
+libs/
