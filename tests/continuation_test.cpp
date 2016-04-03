@@ -14,6 +14,12 @@ struct polymorphic {
     C operator() (C c) const { return c; }
 };
 
+static __inline__ unsigned long long rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ( (unsigned long long)lo)|( ((unsigned long long)hi)<<32 );
+}
 gpd::continuation<void()> monomorphic(gpd::continuation<void()> c) { return c; }
 
 int main() {
@@ -553,5 +559,27 @@ int main() {
         std::copy(x.begin(),x.end(),
                   begin(pipeline));
     }
+    {
 
+        auto c = callcc([](continuation<void()> c) {
+                asm ("# in lambda");
+                while(true) {
+                    asm ("# in lambda loop begin");
+                    c();
+                    asm ("# in lambda loop end");
+                }
+                return c;
+                });
+
+        int count = 1000000;
+
+        auto i = rdtsc();
+        for(int i = 0; i < count; ++i)
+            c();
+        auto e = rdtsc();
+        std::cerr<< i << ' ' << e << ' ' << (e-i) << ' ' << double(e-i) / count / 2 <<'\n' ;
+    }
 }
+
+
+
