@@ -8,6 +8,7 @@ DEP_DIR=deps
 TST_DIR=tests
 BIN_DIR=bin
 LIB_DIR=libs
+LOGS_DIR=logs
 TEST_BIN:=$(addprefix $(BIN_DIR)/,$(TESTS))
 PROGRAM_BIN:=$(addprefix $(BIN_DIR)/,$(PROGRAMS))
 
@@ -104,20 +105,21 @@ setup-dirs: $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(LIB_DIR)
 	[ -e $(LIB_DIR) ] || mkdir $(LIB_DIR);\
 
 shell_cmd_runner= run_cmd() {	\
+	mkdir -p $(LOGS_DIR) ;		\
 	type=$$1;					\
 	shift;						\
 	name=$$1;					\
 	shift; 						\
 	cmd=$$@;						\
+	log="$(LOGS_DIR)/"$$(echo $$name|sed "s/\//-/g")".log";\
 	printf $(msg_header) $$type $$name; \
 	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	if eval $$cmd  >$$name".log" 2>&1 ; then 			\
+	if eval $$cmd  >$$log 2>&1 ; then 			\
 		printf $(msg_pass) OK ;	\
 		exit 0;					\
 	else 						\
-		echo;					\
-		cat $$name".log" ;      \
 		printf $(msg_fail) FAIL  ;\
+		cat $$log ;      \
 		exit 1;					\
 	fi ; 						\
 }								\
