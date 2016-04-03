@@ -1,24 +1,28 @@
 #include "pipe.hpp"
-#include <cassert>
-#include <vector>
 #include "continuation.hpp"
-#include "macros.hpp"
 #include <boost/regex.hpp>
 #include <boost/range.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <iostream>
+#include <cassert>
+#include <vector>
+
+#define BOOST_TEST_MODULE pipe_test
+#include <boost/test/included/unit_test.hpp>
+
 int square(int x) { return x*x; };
 
-int main() {
+BOOST_AUTO_TEST_CASE(pipe_test) {
     using gpd::stage; using gpd::plumb;
     using gpd::ipipe; using gpd::opipe;
 
     {
         auto ret = 10 | stage(square) ;
-        assert(ret == 100);
+        BOOST_CHECK(ret == 100);
     }
     {
         auto ret = 10 | stage(square) | stage(square);
-        assert(ret == 100*100);
+        BOOST_CHECK(ret == 100*100);
     }
     {
         auto ret 
@@ -28,7 +32,7 @@ int main() {
             | stage([](int i) { return i-1; }) 
             ;
                 
-            assert(ret == 32);
+            BOOST_CHECK(ret == 32);
     }
     {
         std::vector<int> x {1,2,3};
@@ -39,7 +43,7 @@ int main() {
             | stage([](int i) { return i-1; })
             ;
         
-            assert(ret == 2);
+            BOOST_CHECK(ret == 2);
     }
     {
         std::vector<int> x {1,2,3};
@@ -55,7 +59,7 @@ int main() {
         
         std::vector<int> exp_y {2,4,6};
         std::vector<int> y(begin(ret), end(ret));
-        assert(y == exp_y);
+        BOOST_CHECK(y == exp_y);
     }
     {
         std::vector<int> x {1,2,3};
@@ -76,7 +80,7 @@ int main() {
         
         std::vector<int> exp_y {6,12,18};
         std::vector<int> y(begin(ret), end(ret));
-        assert(y == exp_y);
+        BOOST_CHECK(y == exp_y);
     }
     {
         std::vector<int> x {1,2,3};
@@ -97,7 +101,7 @@ int main() {
         
         std::vector<int> exp_y {6,12,18};
         std::vector<int> y(begin(ret), end(ret));
-        assert(y == exp_y);
+        BOOST_CHECK(y == exp_y);
     }
     {
         std::string x = "Hello tHis is a Long string with Some capitalized woRds and sOme iN cAmmel Case";
