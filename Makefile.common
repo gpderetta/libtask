@@ -103,18 +103,31 @@ setup-dirs: $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(LIB_DIR)
 	[ -e $(OBJ_DIR) ] || mkdir $(OBJ_DIR);\
 	[ -e $(LIB_DIR) ] || mkdir $(LIB_DIR);\
 
+shell_cmd_runner= run_cmd() {	\
+	type=$$1;					\
+	shift;						\
+	name=$$1;					\
+	shift; 						\
+	cmd=$$@;						\
+	printf $(msg_header) $$type $$name; \
+	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
+	if eval $$cmd  >$$name".log" 2>&1 ; then 			\
+		printf $(msg_pass) OK ;	\
+		exit 0;					\
+	else 						\
+		echo;					\
+		cat $$name".log" ;      \
+		printf $(msg_fail) FAIL  ;\
+		exit 1;					\
+	fi ; 						\
+}								\
+#end shell_cmd_runner
+
 $(BIN_DIR)/%:
-	@printf $(msg_header) LK $@; \
+	@$(shell_cmd_runner); \
 	mkdir -p $(BIN_DIR); \
 	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $(filter %.o,$^) $(LDFLAGS) "; \
-	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	if $$cmd   ; then \
-		printf $(msg_pass) OK ;\
-		exit 0;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-		exit 1;\
-	fi ; \
+	run_cmd	LK $@ $$cmd
 
 .PHONY:
 $(PROGRAMS):%: setup-dirs $(BIN_DIR)/% ;
@@ -122,61 +135,32 @@ $(PROGRAMS):%: setup-dirs $(BIN_DIR)/% ;
 .PHONY:
 $(TESTS):%: setup-dirs $(BIN_DIR)/% ;
 
+
 $(LIBRARIES:%=$(LIB_DIR)/%.so):
-	@printf $(msg_header) LK $@; \
+	@$(shell_cmd_runner)\
 	cmd="$(CXX) -shared $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)" ; \
-	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	if $$cmd   ; then \
-		printf $(msg_pass) OK ;\
-		exit 0;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-		exit 1;\
-	fi ; \
+	run_cmd LK $@ $$cmd
 
 .PHONY:
 $(LIBRARIES):%: setup-dirs $(LIB_DIR)/%.so ;
 
 $(STATIC_LIBRARIES:%=$(LIB_DIR)/%.a):
-	@printf $(msg_header) AR $@; \
+	@$(shell_cmd_runner); \
 	cmd="ar rcs  $@ $^";\
-	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	if $$cmd   ; then \
-		printf $(msg_pass) OK ;\
-		exit 0;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-		exit 1;\
-	fi ; \
+	run_cmd AR $@ $$cmd
 
 .PHONY:
 $(STATIC_LIBRARIES):%:setup-dirs $(LIB_DIR)/%.a ;
 
 %.d:
-	@printf $(msg_header) DP $@; \
-	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF  $@ $< "; \
-	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	$$cmd ; \
-	perl -pi -e 's{^(.*?)\.o[ :]+}{$(OBJ_DIR)/$$1.o $$1.d :}g' $@ ; \
-	if [ $$? -eq 0 ]  ; then \
-		printf $(msg_pass) OK ;\
-		exit 0;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-		exit 1;\
-	fi ; \
+	@$(shell_cmd_runner);\
+	cmd="$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MM -MF  $@ $<" ; \
+	run_cmd DD $@ $$cmd
 
 %.o:
-	@printf $(msg_header) CC $@; \
-	cmd="$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $< "; \
-	test $(SUPPRESS) -eq 1  || echo $$cmd ; \
-	if $$cmd   ; then \
-		printf $(msg_pass) OK ;\
-		exit 0;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-		exit 1;\
-	fi ; \
+	@$(shell_cmd_runner);\
+	cmd="$(CXX) -c $(CPPFLAGS) $(CXXFLAGS) -o $@ $< " ; \
+	run_cmd CC $@ $$cmd
 
 clean:
 	@echo Cleaning... ; \
@@ -193,15 +177,9 @@ tests : setup-dirs $(TEST_BIN)
 
 .PHONY:
 run-%-test: %_test
-	@test=$(BIN_DIR)/$< ;	\
-    printf $(msg_header) TT $$test ; \
-	if $$test > /dev/null   ; then \
-		printf $(msg_pass) PASS ;\
-		exit 0;\
-	else 	\
-		printf $(msg_fail) FAIL  ;\
-		exit 1;\
-	fi ; \
+	@$(shell_cmd_runner);\
+	test=$(BIN_DIR)/$< ;	\
+	run_cmd TT $@ $$test
 
 .PHONY:
 run-tests: $(foreach test,$(TESTS),$(test:%_test=run-%-test))
